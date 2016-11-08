@@ -33,6 +33,20 @@
 #include <xen/interface/io/ring.h>
 #include <xen/interface/io/drmif_linux.h>
 
+#ifdef SILENT
+#define LOG(log_level, fmt, ...)
+#else
+#define LOG(log_level, fmt, ...) \
+	do { \
+		printk("hello" #log_level " (%s:%d): " fmt "\n", \
+			__FUNCTION__, __LINE__ , ## __VA_ARGS__); \
+	} while (0)
+#endif
+
+#define LOG0(fmt, ...) do if (debug_level >= 0) LOG(0, fmt, ## __VA_ARGS__); while (0)
+
+int debug_level;
+
 #define GRANT_INVALID_REF	0
 /* timeout in ms to wait for backend to respond */
 #define VDRM_WAIT_BACK_MS	5000
@@ -65,6 +79,11 @@ struct xdrv_shared_buffer_info {
 	size_t vbuffer_sz;
 };
 
+struct xdrv_evtchnl_pair_info {
+	struct xdrv_evtchnl_info ctrl;
+	struct xdrv_evtchnl_info evt;
+};
+
 struct xdrv_info {
 	struct xenbus_device *xb_dev;
 	spinlock_t io_lock;
@@ -73,15 +92,31 @@ struct xdrv_info {
 	/* array of virtual DRM platform devices */
 	struct platform_device **ddrv_devs;
 
-	int num_evt_channels;
-	struct xdrv_evtchnl_info *evtchnls;
+	int num_evt_pairs;
+	struct xdrv_evtchnl_pair_info *evt_pairs;
 	int cfg_num_cards;
-	struct ddev_plat_data *cfg_plat_data;
+	struct ddev_card_plat_data *cfg_plat_data;
 };
 
-struct ddev_plat_data {
+struct cfg_connector {
+	char type[32];
+	int id;
+	int width;
+	int height;
+	char *xenstore_path;
+};
+
+struct cfg_card {
+	/* number of connectors in this configuration */
+	int num_connectors;
+	/* pcm instance configurations */
+	struct cfg_connector *connectors;
+};
+
+struct ddev_card_plat_data {
 	int index;
 	struct xdrv_info *xdrv_info;
+	struct cfg_card cfg_card;
 };
 
 struct DRMIF_TO_KERN_ERROR {
@@ -105,10 +140,10 @@ static int drmif_to_kern_error(int drmif_err)
 
 static int ddrv_probe(struct platform_device *pdev)
 {
-	struct ddev_plat_data *platdata;
+	struct ddev_card_plat_data *platdata;
 
 	platdata = dev_get_platdata(&pdev->dev);
-	dev_dbg(&pdev->dev, "Creating virtual DRM card %d", platdata->index);
+	LOG0("Creating virtual DRM card %d", platdata->index);
 	return 0;
 }
 
@@ -262,13 +297,16 @@ static void xdrv_evtchnl_free_all(struct xdrv_info *drv_info)
 {
 	int i;
 
-	if (!drv_info->evtchnls)
+	if (!drv_info->evt_pairs)
 		return;
-	for (i = 0; i < drv_info->num_evt_channels; i++)
+	for (i = 0; i < drv_info->num_evt_pairs; i++) {
 		xdrv_evtchnl_free(drv_info,
-			&drv_info->evtchnls[i]);
-	devm_kfree(&drv_info->xb_dev->dev, drv_info->evtchnls);
-	drv_info->evtchnls = NULL;
+			&drv_info->evt_pairs[i].ctrl);
+		xdrv_evtchnl_free(drv_info,
+			&drv_info->evt_pairs[i].evt);
+	}
+	devm_kfree(&drv_info->xb_dev->dev, drv_info->evt_pairs);
+	drv_info->evt_pairs = NULL;
 }
 
 static int xdrv_evtchnl_alloc(struct xdrv_info *drv_info,
@@ -320,8 +358,9 @@ fail:
 }
 
 static int xdrv_evtchnl_create(struct xdrv_info *drv_info,
-		struct xdrv_evtchnl_info *evt_channel,
-		const char *path)
+	struct xdrv_evtchnl_info *evt_channel,
+	const char *path, const char *node_ring,
+	const char *node_chnl)
 {
 	const char *message;
 	int ret;
@@ -333,23 +372,23 @@ static int xdrv_evtchnl_create(struct xdrv_info *drv_info,
 		goto fail;
 	}
 	/* Write control channel ring reference */
-	ret = xenbus_printf(XBT_NIL, path, XENDRM_FIELD_RING_REF, "%u",
+	ret = xenbus_printf(XBT_NIL, path, node_ring, "%u",
 			evt_channel->ring_ref);
 	if (ret < 0) {
-		message = "writing " XENDRM_FIELD_RING_REF;
+		message = "writing ring-ref";
 		goto fail;
 	}
 
-	ret = xenbus_printf(XBT_NIL, path, XENDRM_FIELD_EVT_CHNL, "%u",
+	ret = xenbus_printf(XBT_NIL, path, node_chnl, "%u",
 		evt_channel->port);
 	if (ret < 0) {
-		message = "writing " XENDRM_FIELD_EVT_CHNL;
+		message = "writing event channel";
 		goto fail;
 	}
 	return 0;
 
 fail:
-	dev_err(&drv_info->xb_dev->dev, "Error %s with err %d", message, ret);
+	LOG0("Error %s with err %d", message, ret);
 	return ret;
 }
 
@@ -365,27 +404,40 @@ static inline void xdrv_evtchnl_flush(
 }
 
 static int xdrv_evtchnl_create_all(struct xdrv_info *drv_info,
-		int num_streams)
+		int num_connectors)
 {
-	int ret, i;
+	int ret, card, conn;
 
-	drv_info->evtchnls = devm_kcalloc(&drv_info->xb_dev->dev,
-		num_streams, sizeof(struct xdrv_evtchnl_info),
+	drv_info->evt_pairs = devm_kcalloc(&drv_info->xb_dev->dev,
+		num_connectors, sizeof(struct xdrv_evtchnl_pair_info),
 		GFP_KERNEL);
-	if (!drv_info->evtchnls) {
+	if (!drv_info->evt_pairs) {
 		ret = -ENOMEM;
 		goto fail;
 	}
-	for (i = 0; i < drv_info->cfg_num_cards; i++) {
-		struct ddev_plat_data *plat_data;
+	for (card = 0; card < drv_info->cfg_num_cards; card++) {
+		struct ddev_card_plat_data *plat_data;
 
-		//plat_data = &drv_info->cfg_plat_data[c];
-		ret = xdrv_evtchnl_create(drv_info,
-			&drv_info->evtchnls[i], "/local/");
-		if (ret < 0)
-			goto fail;
+		plat_data = &drv_info->cfg_plat_data[card];
+
+		for (conn = 0; conn < plat_data->cfg_card.num_connectors; conn++) {
+			ret = xdrv_evtchnl_create(drv_info,
+				&drv_info->evt_pairs[conn].ctrl,
+				plat_data->cfg_card.connectors[conn].xenstore_path,
+				XENDRM_FIELD_CTRL_RING_REF,
+				XENDRM_FIELD_CTRL_CHANNEL);
+			if (ret < 0)
+				goto fail;
+			ret = xdrv_evtchnl_create(drv_info,
+				&drv_info->evt_pairs[conn].evt,
+				plat_data->cfg_card.connectors[conn].xenstore_path,
+				XENDRM_FIELD_EVT_RING_REF,
+				XENDRM_FIELD_EVT_CHANNEL);
+			if (ret < 0)
+				goto fail;
+		}
 	}
-	drv_info->num_evt_channels = num_streams;
+	drv_info->num_evt_pairs = num_connectors;
 	return 0;
 fail:
 	xdrv_evtchnl_free_all(drv_info);
@@ -393,7 +445,7 @@ fail:
 }
 
 /* get number of nodes under the path to get number of
- * cards configured or number of devices within the card
+ * cards configured or number of connectors within the card
  */
 static char **xdrv_cfg_get_num_nodes(const char *path, const char *node,
 		int *num_entries)
@@ -406,6 +458,100 @@ static char **xdrv_cfg_get_num_nodes(const char *path, const char *node,
 		return NULL;
 	}
 	return result;
+}
+
+static int xdrv_cfg_connector(struct xdrv_info *drv_info,
+	struct cfg_connector *connector,
+	const char *path, int index)
+{
+	char *str, *connector_path;
+	int ret;
+
+	connector_path = devm_kasprintf(&drv_info->xb_dev->dev,
+		GFP_KERNEL, "%s/%d", path, index);
+	if (!connector_path)
+		return -ENOMEM;
+	connector->xenstore_path = connector_path;
+	str = xenbus_read(XBT_NIL, connector_path,
+		XENSND_FIELD_TYPE, NULL);
+	if (!IS_ERR(str)) {
+		strncpy(connector->type, str, sizeof(connector->type));
+		kfree(str);
+	}
+	if (xenbus_scanf(XBT_NIL, connector_path,
+			XENSND_FIELD_ID, "%d", &connector->id) < 0) {
+		connector->id = 0;
+		ret = -EINVAL;
+		LOG0("Wrong connector ID");
+		goto fail;
+	}
+	if (xenbus_scanf(XBT_NIL, connector_path, XENSND_FIELD_RESOLUTION,
+			"%d" XENDRM_LIST_SEPARATOR "%d",
+			&connector->width, &connector->height) < 0) {
+		connector->width = 0;
+		connector->height = 0;
+		ret = -EINVAL;
+		LOG0("Wrong connector resolution");
+		goto fail;
+	}
+	LOG0("Connector %s: id %d, type %s, resolution %dx%d",
+		connector_path, connector->id, connector->type,
+		connector->width, connector->height);
+	ret = 0;
+fail:
+	return -ret;
+}
+
+static int xdrv_cfg_card(struct xdrv_info *drv_info,
+	struct ddev_card_plat_data *plat_data)
+{
+	struct xenbus_device *xb_dev = drv_info->xb_dev;
+	char *path;
+	char **connector_nodes = NULL;
+	int ret, num_conn, i;
+
+	path = kasprintf(GFP_KERNEL, "%s/" XENSND_PATH_CARD "/%d",
+		xb_dev->nodename, plat_data->index);
+	if (!path) {
+		ret = -ENOMEM;
+		goto fail;
+	}
+	connector_nodes = xdrv_cfg_get_num_nodes(path, XENSND_PATH_CONNECTOR,
+		&num_conn);
+	kfree(connector_nodes);
+	if (!num_conn) {
+		LOG0("No connectors configured for DRM card %d at %s/%s",
+			plat_data->index, path, XENSND_PATH_CONNECTOR);
+		ret = -ENODEV;
+		goto fail;
+	}
+	plat_data->cfg_card.connectors = devm_kcalloc(
+		&drv_info->xb_dev->dev,
+		num_conn, sizeof(struct cfg_connector),
+		GFP_KERNEL);
+	if (!plat_data->cfg_card.connectors) {
+		ret = -ENOMEM;
+		goto fail;
+	}
+	kfree(path);
+	path = kasprintf(GFP_KERNEL,
+		"%s/" XENSND_PATH_CARD "/%d/" XENSND_PATH_CONNECTOR,
+		xb_dev->nodename, plat_data->index);
+	if (!path) {
+		ret = -ENOMEM;
+		goto fail;
+	}
+	for (i = 0; i < num_conn; i++) {
+		ret = xdrv_cfg_connector(drv_info,
+			&plat_data->cfg_card.connectors[i], path, i);
+		if (ret < 0)
+			goto fail;
+	}
+	plat_data->cfg_card.num_connectors = num_conn;
+	ret = 0;
+fail:
+	kfree(path);
+	return ret;
 }
 
 static void xdrv_remove_internal(struct xdrv_info *drv_info)
@@ -612,40 +758,39 @@ static int xdrv_be_on_initwait(struct xdrv_info *drv_info)
 {
 	struct xenbus_device *xb_dev = drv_info->xb_dev;
 	char **card_nodes;
-	int stream_idx;
-	int i, ret;
+	int i, ret, num_connectors;
 
 	card_nodes = xdrv_cfg_get_num_nodes(xb_dev->nodename,
-		"connector", &drv_info->cfg_num_cards);
+		XENSND_PATH_CARD, &drv_info->cfg_num_cards);
 	kfree(card_nodes);
 	if (!drv_info->cfg_num_cards) {
-		dev_err(&drv_info->xb_dev->dev, "No sound cards configured");
+		LOG0("No DRM cards configured");
 		return 0;
 	}
+	LOG0("Have %d card(s)", drv_info->cfg_num_cards);
 	drv_info->cfg_plat_data = devm_kzalloc(&drv_info->xb_dev->dev,
 		drv_info->cfg_num_cards *
-		sizeof(struct ddev_plat_data), GFP_KERNEL);
+		sizeof(struct ddev_card_plat_data), GFP_KERNEL);
 	if (!drv_info->cfg_plat_data)
 		return -ENOMEM;
-	/* stream index must be unique through all cards: pass it in to be
-	 * incremented when creating streams
-	 */
-	stream_idx = 0;
+	num_connectors = 0;
 	for (i = 0; i < drv_info->cfg_num_cards; i++) {
-		/* read card configuration from the store and
-		 * set platform data structure
-		 */
-		drv_info->cfg_plat_data[i].index = i;
-		drv_info->cfg_plat_data[i].xdrv_info = drv_info;
-#if 0
-		ret = xdrv_cfg_card(drv_info,
-			&drv_info->cfg_plat_data[i], &stream_idx);
+		struct ddev_card_plat_data *cfg_plat_data;
+
+		cfg_plat_data = &drv_info->cfg_plat_data[i];
+		cfg_plat_data->index = i;
+		cfg_plat_data->xdrv_info = drv_info;
+		ret = xdrv_cfg_card(drv_info, cfg_plat_data);
 		if (ret < 0)
 			return ret;
-#endif
+		LOG0("Have %d conectors for card %d",
+			cfg_plat_data->cfg_card.num_connectors,
+			drv_info->cfg_num_cards);
+		num_connectors +=
+			cfg_plat_data->cfg_card.num_connectors;
 	}
 	/* create event channels for all streams and publish */
-	return xdrv_evtchnl_create_all(drv_info, stream_idx);
+	return xdrv_evtchnl_create_all(drv_info, num_connectors);
 }
 
 static int xdrv_be_on_connected(struct xdrv_info *drv_info)
