@@ -17,13 +17,14 @@
  */
 
 #include "xen-drm.h"
+#include "xen-drm-logs.h"
 
 int xendrm_probe(struct platform_device *pdev)
 {
 	struct xendrm_plat_data *platdata;
 
 	platdata = dev_get_platdata(&pdev->dev);
-//	LOG0("Creating virtual DRM card %d", platdata->index);
+	LOG0("Creating virtual DRM card %d", platdata->index);
 	return 0;
 }
 

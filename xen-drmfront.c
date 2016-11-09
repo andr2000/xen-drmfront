@@ -34,20 +34,7 @@
 #include <xen/interface/io/drmif_linux.h>
 
 #include "xen-drm.h"
-
-#ifdef SILENT
-#define LOG(log_level, fmt, ...)
-#else
-#define LOG(log_level, fmt, ...) \
-	do { \
-		printk("hello" #log_level " (%s:%d): " fmt "\n", \
-			__FUNCTION__, __LINE__ , ## __VA_ARGS__); \
-	} while (0)
-#endif
-
-#define LOG0(fmt, ...) do if (debug_level >= 0) LOG(0, fmt, ## __VA_ARGS__); while (0)
-
-int debug_level;
+#include "xen-drm-logs.h"
 
 #define GRANT_INVALID_REF	0
 /* timeout in ms to wait for backend to respond */
@@ -947,18 +934,18 @@ static int __init xdrv_init(void)
 	if (!xen_domain())
 		return -ENODEV;
 	if (xen_initial_domain()) {
-		pr_err(XENDRM_DRIVER_NAME " cannot run in Dom0\n");
+		LOG0(XENDRM_DRIVER_NAME " cannot run in Dom0\n");
 		return -ENODEV;
 	}
 	if (!xen_has_pv_devices())
 		return -ENODEV;
-	pr_info("Registering XEN PV " XENDRM_DRIVER_NAME "\n");
+	LOG0("Registering XEN PV " XENDRM_DRIVER_NAME "\n");
 	return xenbus_register_frontend(&xen_driver);
 }
 
 static void __exit xdrv_cleanup(void)
 {
-	pr_info("Unregistering XEN PV " XENDRM_DRIVER_NAME "\n");
+	LOG0("Unregistering XEN PV " XENDRM_DRIVER_NAME "\n");
 	xenbus_unregister_driver(&xen_driver);
 }
 
