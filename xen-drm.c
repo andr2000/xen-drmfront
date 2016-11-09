@@ -22,16 +22,6 @@
 #include "xen-drm.h"
 #include "xen-drm-logs.h"
 
-static int xendrm_unload(struct drm_device *dev)
-{
-	return 0;
-}
-
-static int xendrm_load(struct drm_device *dev, unsigned long flags)
-{
-	return 0;
-}
-
 void xendrm_preclose(struct drm_device *dev, struct drm_file *file)
 {
 }
@@ -80,8 +70,6 @@ void xendrm_gem_cma_free_object(struct drm_gem_object *obj)
 static struct drm_driver xendrm_driver = {
 	.driver_features           = (DRIVER_GEM | \
 			DRIVER_MODESET | DRIVER_PRIME),
-	.load                      = xendrm_load,
-	.unload                    = xendrm_unload,
 	.preclose                  = xendrm_preclose,
 	.lastclose                 = xendrm_lastclose,
 	.get_vblank_counter        = drm_vblank_count,
