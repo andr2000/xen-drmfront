@@ -1,0 +1,2 @@
+1. Think of unifying incoming event handling: extend ring.h
+so fdif.h, kbdif.h and drmif.h use something generic.
