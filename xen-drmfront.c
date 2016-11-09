@@ -33,6 +33,8 @@
 #include <xen/interface/io/ring.h>
 #include <xen/interface/io/drmif_linux.h>
 
+#include "xen-drm.h"
+
 #ifdef SILENT
 #define LOG(log_level, fmt, ...)
 #else
@@ -108,34 +110,14 @@ struct xdrv_info {
 	int num_evt_pairs;
 	struct xdrv_evtchnl_pair_info *evt_pairs;
 	int cfg_num_cards;
-	struct ddev_card_plat_data *cfg_plat_data;
-};
-
-struct cfg_connector {
-	char type[32];
-	int id;
-	int width;
-	int height;
-	char *xenstore_path;
-};
-
-struct cfg_card {
-	/* number of connectors in this configuration */
-	int num_connectors;
-	/* pcm instance configurations */
-	struct cfg_connector *connectors;
-};
-
-struct ddev_card_plat_data {
-	int index;
-	struct xdrv_info *xdrv_info;
-	struct cfg_card cfg_card;
+	struct xendrm_plat_data *cfg_plat_data;
 };
 
 struct DRMIF_TO_KERN_ERROR {
 	int drmif;
 	int kern;
 };
+
 static struct DRMIF_TO_KERN_ERROR drmif_kern_error_codes[] = {
 	{ .drmif = XENDRM_RSP_OKAY,     .kern = 0 },
 	{ .drmif = XENDRM_RSP_ERROR,    .kern = EIO },
@@ -153,16 +135,12 @@ static int drmif_to_kern_error(int drmif_err)
 
 static int ddrv_probe(struct platform_device *pdev)
 {
-	struct ddev_card_plat_data *platdata;
-
-	platdata = dev_get_platdata(&pdev->dev);
-	LOG0("Creating virtual DRM card %d", platdata->index);
-	return 0;
+	return xendrm_probe(pdev);
 }
 
 static int ddrv_remove(struct platform_device *pdev)
 {
-	return 0;
+	return xendrm_remove(pdev);
 }
 
 static struct platform_driver ddrv_info = {
@@ -208,22 +186,19 @@ static int ddrv_init(struct xdrv_info *drv_info)
 	if (!drv_info->ddrv_devs)
 		goto fail;
 	for (i = 0; i < num_cards; i++) {
-#if 0
 		struct platform_device *ddrv_dev;
-		struct ddev_plat_data *platdata;
+		struct xendrm_plat_data *platdata;
 
 		platdata = &drv_info->cfg_plat_data[i];
 		/* pass card configuration via platform data */
 		ddrv_dev = platform_device_register_data(NULL,
-			XENDRM_DRIVER_NAME,
-			platdata->index, platdata,
+			XENDRM_DRIVER_NAME, platdata->index, platdata,
 			sizeof(*platdata));
 		drv_info->ddrv_devs[i] = ddrv_dev;
 		if (IS_ERR(ddrv_dev)) {
 			drv_info->ddrv_devs[i] = NULL;
 			goto fail;
 		}
-#endif
 	}
 	return 0;
 
@@ -490,7 +465,7 @@ static int xdrv_evtchnl_create_all(struct xdrv_info *drv_info,
 		goto fail;
 	}
 	for (card = 0; card < drv_info->cfg_num_cards; card++) {
-		struct ddev_card_plat_data *plat_data;
+		struct xendrm_plat_data *plat_data;
 
 		plat_data = &drv_info->cfg_plat_data[card];
 
@@ -537,7 +512,7 @@ static char **xdrv_cfg_get_num_nodes(const char *path, const char *node,
 }
 
 static int xdrv_cfg_connector(struct xdrv_info *drv_info,
-	struct cfg_connector *connector,
+	struct xendrm_cfg_connector *connector,
 	const char *path, int index)
 {
 	char *str, *connector_path;
@@ -579,7 +554,7 @@ fail:
 }
 
 static int xdrv_cfg_card(struct xdrv_info *drv_info,
-	struct ddev_card_plat_data *plat_data)
+	struct xendrm_plat_data *plat_data)
 {
 	struct xenbus_device *xb_dev = drv_info->xb_dev;
 	char *path;
@@ -603,7 +578,7 @@ static int xdrv_cfg_card(struct xdrv_info *drv_info,
 	}
 	plat_data->cfg_card.connectors = devm_kcalloc(
 		&drv_info->xb_dev->dev,
-		num_conn, sizeof(struct cfg_connector),
+		num_conn, sizeof(struct xendrm_cfg_connector),
 		GFP_KERNEL);
 	if (!plat_data->cfg_card.connectors) {
 		ret = -ENOMEM;
@@ -846,12 +821,12 @@ static int xdrv_be_on_initwait(struct xdrv_info *drv_info)
 	LOG0("Have %d card(s)", drv_info->cfg_num_cards);
 	drv_info->cfg_plat_data = devm_kzalloc(&drv_info->xb_dev->dev,
 		drv_info->cfg_num_cards *
-		sizeof(struct ddev_card_plat_data), GFP_KERNEL);
+		sizeof(struct xendrm_plat_data), GFP_KERNEL);
 	if (!drv_info->cfg_plat_data)
 		return -ENOMEM;
 	num_connectors = 0;
 	for (i = 0; i < drv_info->cfg_num_cards; i++) {
-		struct ddev_card_plat_data *cfg_plat_data;
+		struct xendrm_plat_data *cfg_plat_data;
 
 		cfg_plat_data = &drv_info->cfg_plat_data[i];
 		cfg_plat_data->index = i;
