@@ -1,3 +1,3 @@
 EXTRA_CFLAGS := -I$(src)
-xen-drmfront-y := xen-drm.o
 obj-m          := xen-drmfront.o
+xen-drmfront-y := xen-drm.o xen-drm-front.o

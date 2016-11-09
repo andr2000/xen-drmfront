@@ -934,18 +934,18 @@ static int __init xdrv_init(void)
 	if (!xen_domain())
 		return -ENODEV;
 	if (xen_initial_domain()) {
-		LOG0(XENDRM_DRIVER_NAME " cannot run in Dom0\n");
+		LOG0(XENDRM_DRIVER_NAME " cannot run in Dom0");
 		return -ENODEV;
 	}
 	if (!xen_has_pv_devices())
 		return -ENODEV;
-	LOG0("Registering XEN PV " XENDRM_DRIVER_NAME "\n");
+	LOG0("Registering XEN PV " XENDRM_DRIVER_NAME);
 	return xenbus_register_frontend(&xen_driver);
 }
 
 static void __exit xdrv_cleanup(void)
 {
-	LOG0("Unregistering XEN PV " XENDRM_DRIVER_NAME "\n");
+	LOG0("Unregistering XEN PV " XENDRM_DRIVER_NAME);
 	xenbus_unregister_driver(&xen_driver);
 }
 
