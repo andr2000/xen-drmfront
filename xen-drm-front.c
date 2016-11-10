@@ -563,6 +563,11 @@ static int xdrv_cfg_card(struct xdrv_info *drv_info,
 		ret = -ENODEV;
 		goto fail;
 	}
+	if (num_conn > XENDRM_DU_MAX_CRTCS) {
+		LOG0("Only %d connectors supported, skipping the rest",
+			XENDRM_DU_MAX_CRTCS);
+		num_conn = XENDRM_DU_MAX_CRTCS;
+	}
 	plat_data->cfg_card.connectors = devm_kcalloc(
 		&drv_info->xb_dev->dev,
 		num_conn, sizeof(struct xendrm_cfg_connector),
