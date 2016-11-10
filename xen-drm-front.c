@@ -548,18 +548,18 @@ static int xdrv_cfg_card(struct xdrv_info *drv_info,
 	char **connector_nodes = NULL;
 	int ret, num_conn, i;
 
-	path = kasprintf(GFP_KERNEL, "%s/" XENSND_PATH_CARD "/%d",
+	path = kasprintf(GFP_KERNEL, "%s/" XENDRM_PATH_CARD "/%d",
 		xb_dev->nodename, plat_data->index);
 	if (!path) {
 		ret = -ENOMEM;
 		goto fail;
 	}
-	connector_nodes = xdrv_cfg_get_num_nodes(path, XENSND_PATH_CONNECTOR,
+	connector_nodes = xdrv_cfg_get_num_nodes(path, XENDRM_PATH_CONNECTOR,
 		&num_conn);
 	kfree(connector_nodes);
 	if (!num_conn) {
 		LOG0("No connectors configured for DRM card %d at %s/%s",
-			plat_data->index, path, XENSND_PATH_CONNECTOR);
+			plat_data->index, path, XENDRM_PATH_CONNECTOR);
 		ret = -ENODEV;
 		goto fail;
 	}
@@ -578,7 +578,7 @@ static int xdrv_cfg_card(struct xdrv_info *drv_info,
 	}
 	kfree(path);
 	path = kasprintf(GFP_KERNEL,
-		"%s/" XENSND_PATH_CARD "/%d/" XENSND_PATH_CONNECTOR,
+		"%s/" XENDRM_PATH_CARD "/%d/" XENDRM_PATH_CONNECTOR,
 		xb_dev->nodename, plat_data->index);
 	if (!path) {
 		ret = -ENOMEM;
@@ -804,7 +804,7 @@ static int xdrv_be_on_initwait(struct xdrv_info *drv_info)
 	int i, ret, num_connectors;
 
 	card_nodes = xdrv_cfg_get_num_nodes(xb_dev->nodename,
-		XENSND_PATH_CARD, &drv_info->cfg_num_cards);
+		XENDRM_PATH_CARD, &drv_info->cfg_num_cards);
 	kfree(card_nodes);
 	if (!drv_info->cfg_num_cards) {
 		LOG0("No DRM cards configured");
