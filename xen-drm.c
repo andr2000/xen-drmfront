@@ -20,6 +20,7 @@
 #include <drm/drm_gem_cma_helper.h>
 
 #include "xen-drm.h"
+#include "xen-drm-kms.h"
 #include "xen-drm-logs.h"
 
 void xendrm_preclose(struct drm_device *dev, struct drm_file *file)
@@ -50,17 +51,17 @@ int xendrm_dumb_create(struct drm_file *file_priv, struct drm_device *dev,
 }
 
 static const struct file_operations xendrm_fops = {
-	.owner		= THIS_MODULE,
-	.open		= drm_open,
-	.release	= drm_release,
-	.unlocked_ioctl	= drm_ioctl,
+	.owner          = THIS_MODULE,
+	.open           = drm_open,
+	.release        = drm_release,
+	.unlocked_ioctl = drm_ioctl,
 #ifdef CONFIG_COMPAT
-	.compat_ioctl	= drm_compat_ioctl,
+	.compat_ioctl   = drm_compat_ioctl,
 #endif
-	.poll		= drm_poll,
-	.read		= drm_read,
-	.llseek		= no_llseek,
-	.mmap		= drm_gem_cma_mmap,
+	.poll           = drm_poll,
+	.read           = drm_read,
+	.llseek         = no_llseek,
+	.mmap           = drm_gem_cma_mmap,
 };
 
 void xendrm_gem_cma_free_object(struct drm_gem_object *obj)
@@ -68,8 +69,8 @@ void xendrm_gem_cma_free_object(struct drm_gem_object *obj)
 }
 
 static struct drm_driver xendrm_driver = {
-	.driver_features           = (DRIVER_GEM | \
-			DRIVER_MODESET | DRIVER_PRIME),
+	.driver_features           = DRIVER_GEM | DRIVER_MODESET |
+	                             DRIVER_PRIME,
 	.preclose                  = xendrm_preclose,
 	.lastclose                 = xendrm_lastclose,
 	.get_vblank_counter        = drm_vblank_count,
@@ -100,37 +101,78 @@ static struct drm_driver xendrm_driver = {
 int xendrm_probe(struct platform_device *pdev)
 {
 	struct xendrm_plat_data *platdata;
-
-	platdata = dev_get_platdata(&pdev->dev);
-	struct drm_device *drm_dev;
+	struct xendrm_du_device *xendrm_du;
+	struct drm_device *ddev;
 	int ret;
 
+	platdata = dev_get_platdata(&pdev->dev);
 	LOG0("Creating virtual DRM card %d", platdata->index);
-	drm_dev = drm_dev_alloc(&xendrm_driver, &pdev->dev);
-	if (!drm_dev)
+	/* Allocate and initialize the DRM and xendrm device structures. */
+	xendrm_du = devm_kzalloc(&pdev->dev, sizeof(*xendrm_du), GFP_KERNEL);
+	if (!xendrm_du)
 		return -ENOMEM;
 
-	drm_dev->platformdev = pdev;
+	xendrm_du->dev = &pdev->dev;
 
-	ret = drm_dev_register(drm_dev, 0);
+	ddev = drm_dev_alloc(&xendrm_driver, &pdev->dev);
+	if (!ddev)
+		return -ENOMEM;
+
+	xendrm_du->ddev = ddev;
+	/*
+	 * FIXME: assume 1 CRTC and 1 Encoder per each connector
+	 */
+	xendrm_du->num_crtcs = platdata->cfg_card.num_connectors;
+	ddev->dev_private = xendrm_du;
+	platform_set_drvdata(pdev, xendrm_du);
+
+	/* Initialize vertical blanking interrupts handling. Start with vblank
+	 * disabled for all CRTCs.
+	 */
+	ret = drm_vblank_init(ddev, (1 << xendrm_du->num_crtcs) - 1);
+	if (ret < 0)
+		goto fail;
+	/* DRM/KMS objects */
+	ret = xendrm_du_modeset_init(xendrm_du);
+	if (ret < 0) {
+		if (ret != -EPROBE_DEFER)
+			dev_err(&pdev->dev,
+				"failed to initialize DRM/KMS (%d)\n", ret);
+		goto fail;
+	}
+	ddev->irq_enabled = 1;
+
+	/* Register the DRM device with the core and the connectors with
+	 * sysfs.
+	 */
+	ret = drm_dev_register(ddev, 0);
 	if (ret)
-		goto err_free;
+		goto fail;
 
 	DRM_INFO("Initialized %s %d.%d.%d %s on minor %d\n",
 		xendrm_driver.name, xendrm_driver.major,
 		xendrm_driver.minor, xendrm_driver.patchlevel,
-		xendrm_driver.date, drm_dev->primary->index);
+		xendrm_driver.date, ddev->primary->index);
 	return 0;
-
-err_free:
-	drm_dev_unref(drm_dev);
+fail:
+	xendrm_remove(pdev);
 	return ret;
 }
 
 int xendrm_remove(struct platform_device *pdev)
 {
-	struct xendrm_plat_data *platdata;
+	struct xendrm_du_device *xendrm_du = platform_get_drvdata(pdev);
+	struct drm_device *drm_dev = xendrm_du->ddev;
 
-	platdata = dev_get_platdata(&pdev->dev);
+	drm_dev_unregister(drm_dev);
+#if 0
+	if (rcdu->fbdev)
+		drm_fbdev_cma_fini(rcdu->fbdev);
+
+	drm_kms_helper_poll_fini(ddev);
+	drm_mode_config_cleanup(ddev);
+#endif
+	drm_vblank_cleanup(drm_dev);
+	drm_dev_unref(drm_dev);
 	return 0;
 }

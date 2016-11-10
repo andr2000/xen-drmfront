@@ -21,6 +21,39 @@
 
 #include <linux/platform_device.h>
 
+#include "xen-drm-crtc.h"
+#include "xen-drm-group.h"
+
+#define XENDRM_DU_MAX_CRTCS	4
+#define XENDRM_DU_MAX_GROUPS	DIV_ROUND_UP(XENDRM_DU_MAX_CRTCS, 2)
+
+/*
+ * struct xendrm_du_output_routing - Output routing specification
+ * @possible_crtcs: bitmask of possible CRTCs for the output
+ * @encoder_type: DRM type of the internal encoder associated with the output
+ * @port: device tree port number corresponding to this output route
+ */
+struct xendrm_du_output_routing {
+	unsigned int possible_crtcs;
+	unsigned int encoder_type;
+	unsigned int port;
+};
+
+struct xendrm_du_device {
+	struct device *dev;
+	struct drm_device *ddev;
+	struct drm_fbdev_cma *fbdev;
+
+	unsigned int num_crtcs;
+	struct xendrm_du_crtc crtcs[XENDRM_DU_MAX_CRTCS];
+	struct xendrm_du_group groups[XENDRM_DU_MAX_GROUPS];
+
+	struct {
+		struct drm_property *alpha;
+		struct drm_property *colorkey;
+	} props;
+};
+
 struct xendrm_cfg_connector {
 	char type[32];
 	int id;
