@@ -18,24 +18,25 @@
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_crtc_helper.h>
+#include <drm/drm_fb_cma_helper.h>
 
 #include "xen-drm.h"
 #include "xen-drm-kms.h"
 
 static struct drm_framebuffer *
-xendrm_fb_create(struct drm_device *dev, struct drm_file *file_priv,
+xendrm_du_fb_create(struct drm_device *dev, struct drm_file *file_priv,
 	const struct drm_mode_fb_cmd2 *mode_cmd)
 {
 	return NULL;
 }
 
-static void xendrm_output_poll_changed(struct drm_device *dev)
+static void xendrm_du_output_poll_changed(struct drm_device *dev)
 {
 }
 
 static const struct drm_mode_config_funcs xendrm_du_mode_config_funcs = {
-	.fb_create = xendrm_fb_create,
-	.output_poll_changed = xendrm_output_poll_changed,
+	.fb_create = xendrm_du_fb_create,
+	.output_poll_changed = xendrm_du_output_poll_changed,
 	.atomic_check = drm_atomic_helper_check,
 	.atomic_commit = drm_atomic_helper_commit,
 };
@@ -71,4 +72,16 @@ int xendrm_du_modeset_init(struct xendrm_du_device *xendrm_du)
 fail:
 	drm_mode_config_cleanup(drm_dev);
 	return ret;
+}
+
+void xendrm_du_modeset_cleanup(struct xendrm_du_device *xendrm_du)
+{
+	struct drm_device *drm_dev = xendrm_du->drm_dev;
+	int i;
+
+	for (i = 0; i < xendrm_du->num_crtcs; i++) {
+		if (xendrm_du->crtcs[i].fbdev)
+			drm_fbdev_cma_fini(xendrm_du->crtcs[i].fbdev);
+	}
+	drm_mode_config_cleanup(drm_dev);
 }
