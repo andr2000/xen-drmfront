@@ -25,18 +25,6 @@
 
 #define XENDRM_DU_MAX_CRTCS	4
 
-/*
- * struct xendrm_du_output_routing - Output routing specification
- * @possible_crtcs: bitmask of possible CRTCs for the output
- * @encoder_type: DRM type of the internal encoder associated with the output
- * @port: device tree port number corresponding to this output route
- */
-struct xendrm_du_output_routing {
-	unsigned int possible_crtcs;
-	unsigned int encoder_type;
-	unsigned int port;
-};
-
 struct xendrm_du_device {
 	struct device *dev;
 	struct drm_device *ddev;
