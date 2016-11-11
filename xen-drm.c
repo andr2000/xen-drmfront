@@ -59,7 +59,9 @@ static const struct file_operations xendrm_fops = {
 	.poll           = drm_poll,
 	.read           = drm_read,
 	.llseek         = no_llseek,
+#if 0
 	.mmap           = drm_gem_cma_mmap,
+#endif
 };
 
 void xendrm_gem_cma_free_object(struct drm_gem_object *obj)
@@ -68,25 +70,31 @@ void xendrm_gem_cma_free_object(struct drm_gem_object *obj)
 
 static struct drm_driver xendrm_driver = {
 	.driver_features           = DRIVER_GEM | DRIVER_MODESET |
-	                             DRIVER_PRIME,
+	                             DRIVER_PRIME | DRIVER_ATOMIC,
 	.preclose                  = xendrm_preclose,
 	.lastclose                 = xendrm_lastclose,
 	.get_vblank_counter        = drm_vblank_count,
 	.enable_vblank             = xendrm_enable_vblank,
 	.disable_vblank            = xendrm_disable_vblank,
 	.gem_free_object           = xendrm_gem_cma_free_object,
+#if 0
 	.gem_vm_ops                = &drm_gem_cma_vm_ops,
+#endif
 	.prime_handle_to_fd        = drm_gem_prime_handle_to_fd,
 	.prime_fd_to_handle        = drm_gem_prime_fd_to_handle,
 	.gem_prime_import          = drm_gem_prime_import,
 	.gem_prime_export          = drm_gem_prime_export,
+#if 0
 	.gem_prime_get_sg_table    = drm_gem_cma_prime_get_sg_table,
 	.gem_prime_import_sg_table = drm_gem_cma_prime_import_sg_table,
 	.gem_prime_vmap            = drm_gem_cma_prime_vmap,
 	.gem_prime_vunmap          = drm_gem_cma_prime_vunmap,
 	.gem_prime_mmap            = drm_gem_cma_prime_mmap,
+#endif
 	.dumb_create               = xendrm_dumb_create,
+#if 0
 	.dumb_map_offset           = drm_gem_cma_dumb_map_offset,
+#endif
 	.dumb_destroy              = drm_gem_dumb_destroy,
 	.fops                      = &xendrm_fops,
 	.name                      = "xendrm-du",
@@ -116,18 +124,16 @@ int xendrm_probe(struct platform_device *pdev)
 	if (!ddev)
 		return -ENOMEM;
 
-	xendrm_du->ddev = ddev;
+	xendrm_du->drm_dev = ddev;
 	/*
 	 * FIXME: assume 1 CRTC and 1 Encoder per each connector
 	 */
 	xendrm_du->num_crtcs = platdata->cfg_card.num_connectors;
+	xendrm_du->platdata = platdata;
 	ddev->dev_private = xendrm_du;
 	platform_set_drvdata(pdev, xendrm_du);
 
-	/* Initialize vertical blanking interrupts handling. Start with vblank
-	 * disabled for all CRTCs.
-	 */
-	ret = drm_vblank_init(ddev, (1 << xendrm_du->num_crtcs) - 1);
+	ret = drm_vblank_init(ddev, xendrm_du->num_crtcs);
 	if (ret < 0)
 		goto fail;
 	/* DRM/KMS objects */
@@ -160,15 +166,15 @@ fail:
 int xendrm_remove(struct platform_device *pdev)
 {
 	struct xendrm_du_device *xendrm_du = platform_get_drvdata(pdev);
-	struct drm_device *drm_dev = xendrm_du->ddev;
+	struct drm_device *drm_dev = xendrm_du->drm_dev;
 
 	drm_dev_unregister(drm_dev);
 #if 0
 	if (rcdu->fbdev)
 		drm_fbdev_cma_fini(rcdu->fbdev);
 
-	drm_kms_helper_poll_fini(ddev);
-	drm_mode_config_cleanup(ddev);
+	drm_kms_helper_poll_fini(drm_dev);
+	drm_mode_config_cleanup(drm_dev);
 #endif
 	drm_vblank_cleanup(drm_dev);
 	drm_dev_unref(drm_dev);

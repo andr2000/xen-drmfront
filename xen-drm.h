@@ -27,8 +27,9 @@
 
 struct xendrm_du_device {
 	struct device *dev;
-	struct drm_device *ddev;
-	unsigned int num_crtcs;
+	struct drm_device *drm_dev;
+	int num_crtcs;
+	struct xendrm_plat_data *platdata;
 	struct xendrm_du_crtc crtcs[XENDRM_DU_MAX_CRTCS];
 };
 

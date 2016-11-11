@@ -20,12 +20,18 @@
 #include <drm/drmP.h>
 #include <drm/drm_crtc.h>
 
+struct xendrm_du_device;
+
 struct xendrm_du_crtc {
 	int index;
 	struct drm_crtc crtc;
 	struct drm_fbdev_cma *fbdev;
+	struct {
+		struct drm_property *alpha;
+	} props;
 };
 
-int xendrm_du_crtc_create(unsigned int index);
+int xendrm_du_crtc_create(struct xendrm_du_device *xendrm_du,
+	struct xendrm_du_crtc *du_crtc, unsigned int index);
 
 #endif /* __XEN_DRM_CRTC_H_ */

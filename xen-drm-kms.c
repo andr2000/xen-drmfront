@@ -15,18 +15,16 @@
  */
 
 #include <drm/drmP.h>
+#include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_crtc_helper.h>
-#include <drm/drm_fb_cma_helper.h>
-#include <drm/drm_gem_cma_helper.h>
-#include <drm/drm_mode.h>
 
 #include "xen-drm.h"
 #include "xen-drm-kms.h"
 
 static struct drm_framebuffer *
 xendrm_fb_create(struct drm_device *dev, struct drm_file *file_priv,
-	struct drm_mode_fb_cmd2 *mode_cmd)
+	const struct drm_mode_fb_cmd2 *mode_cmd)
 {
 	return NULL;
 }
@@ -38,11 +36,14 @@ static void xendrm_output_poll_changed(struct drm_device *dev)
 static const struct drm_mode_config_funcs xendrm_du_mode_config_funcs = {
 	.fb_create = xendrm_fb_create,
 	.output_poll_changed = xendrm_output_poll_changed,
+	.atomic_check = drm_atomic_helper_check,
+	.atomic_commit = drm_atomic_helper_commit,
 };
 
 int xendrm_du_modeset_init(struct xendrm_du_device *xendrm_du)
 {
-	struct drm_device *dev = xendrm_du->ddev;
+	struct drm_device *dev = xendrm_du->drm_dev;
+	int i, ret;
 
 	drm_mode_config_init(dev);
 
@@ -52,8 +53,16 @@ int xendrm_du_modeset_init(struct xendrm_du_device *xendrm_du)
 	dev->mode_config.max_height = 2047;
 	dev->mode_config.funcs = &xendrm_du_mode_config_funcs;
 
+	for (i = 0; i < xendrm_du->num_crtcs; i++) {
+		ret = xendrm_du_crtc_create(xendrm_du, &xendrm_du->crtcs[i], i);
+		if (ret < 0)
+			goto fail;
+
+	}
 	drm_mode_config_reset(dev);
 
 	drm_kms_helper_poll_init(dev);
 	return 0;
+fail:
+	return ret;
 }
