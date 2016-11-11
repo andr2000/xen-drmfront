@@ -20,11 +20,6 @@
 
 #include "xen-drm.h"
 
-static void xendrm_du_crtc_plane_destroy(struct drm_plane *plane)
-{
-	drm_plane_cleanup(plane);
-}
-
 static int xendrm_du_crtc_props_init(struct xendrm_du_device *xendrm_du,
 	struct xendrm_du_crtc *crtc)
 {
@@ -50,7 +45,7 @@ static const uint32_t xendrm_du_drm_plane_formats[] = {
 static const struct drm_plane_funcs xendrm_du_crtc_drm_plane_funcs = {
 	.atomic_duplicate_state = drm_atomic_helper_plane_duplicate_state,
 	.atomic_destroy_state = drm_atomic_helper_plane_destroy_state,
-	.destroy = xendrm_du_crtc_plane_destroy,
+	.destroy = drm_plane_cleanup,
 	.disable_plane = drm_atomic_helper_disable_plane,
 	.reset = drm_atomic_helper_plane_reset,
 	.update_plane = drm_atomic_helper_update_plane,
@@ -73,13 +68,8 @@ static struct drm_plane *xendrm_du_crtc_create_primary(
 	return primary;
 }
 
-static void xendrm_du_encoder_destroy(struct drm_encoder *encoder)
-{
-	drm_encoder_cleanup(encoder);
-}
-
 static const struct drm_encoder_funcs xendrm_drm_encoder_funcs = {
-	.destroy = xendrm_du_encoder_destroy,
+	.destroy = drm_encoder_cleanup,
 };
 
 int xendrm_du_encoder_create(struct xendrm_du_device *xendrm_du,
@@ -96,12 +86,6 @@ int xendrm_du_encoder_create(struct xendrm_du_device *xendrm_du,
 	if (ret < 0)
 		return ret;
 	return 0;
-}
-
-static void xendrm_du_drm_connector_destroy(struct drm_connector *connector)
-{
-	drm_connector_unregister(connector);
-	drm_connector_cleanup(connector);
 }
 
 static enum drm_connector_status
@@ -145,7 +129,7 @@ static const struct drm_connector_helper_funcs xendrm_du_connector_helper_funcs 
 static const struct drm_connector_funcs xendrm_du_drm_connector_funcs = {
 	.atomic_duplicate_state = drm_atomic_helper_connector_duplicate_state,
 	.atomic_destroy_state = drm_atomic_helper_connector_destroy_state,
-	.destroy = xendrm_du_drm_connector_destroy,
+	.destroy = drm_connector_cleanup,
 	.detect = xendrm_du_drm_connector_detect,
 	.dpms = drm_atomic_helper_connector_dpms,
 	.fill_modes = drm_helper_probe_single_connector_modes,
