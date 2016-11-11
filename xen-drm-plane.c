@@ -17,10 +17,9 @@
  */
 
 #include "xen-drm.h"
-#include "xen-drm-group.h"
 #include "xen-drm-plane.h"
 
-int xendrm_du_planes_init(struct xendrm_du_group *rgrp)
+int xendrm_du_planes_init(void)
 {
 	return 0;
 }

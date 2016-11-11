@@ -25,9 +25,8 @@ struct xendrm_du_group;
 
 struct xendrm_du_plane {
 	struct drm_plane plane;
-	struct xendrm_du_group *group;
 };
 
-int xendrm_du_planes_init(struct xendrm_du_group *rgrp);
+int xendrm_du_planes_init(void);
 
 #endif /* __XEN_DRM_PLANE_H_ */

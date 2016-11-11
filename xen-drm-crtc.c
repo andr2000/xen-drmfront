@@ -17,9 +17,8 @@
  */
 
 #include "xen-drm.h"
-#include "xen-drm-group.h"
 
-int xendrm_du_crtc_create(struct xendrm_du_group *rgrp, unsigned int index)
+int xendrm_du_crtc_create(unsigned int index)
 {
 	return 0;
 }

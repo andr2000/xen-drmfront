@@ -51,10 +51,9 @@ struct xendrm_du_crtc {
 
 	unsigned int outputs;
 
-	struct rcar_du_group *group;
 	struct rcar_du_vsp *vsp;
 };
 
-int xendrm_du_crtc_create(struct xendrm_du_group *rgrp, unsigned int index);
+int xendrm_du_crtc_create(unsigned int index);
 
 #endif /* __XEN_DRM_CRTC_H_ */

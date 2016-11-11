@@ -22,10 +22,8 @@
 #include <linux/platform_device.h>
 
 #include "xen-drm-crtc.h"
-#include "xen-drm-group.h"
 
 #define XENDRM_DU_MAX_CRTCS	4
-#define XENDRM_DU_MAX_GROUPS	DIV_ROUND_UP(XENDRM_DU_MAX_CRTCS, 2)
 
 /*
  * struct xendrm_du_output_routing - Output routing specification
@@ -46,7 +44,6 @@ struct xendrm_du_device {
 
 	unsigned int num_crtcs;
 	struct xendrm_du_crtc crtcs[XENDRM_DU_MAX_CRTCS];
-	struct xendrm_du_group groups[XENDRM_DU_MAX_GROUPS];
 
 	struct {
 		struct drm_property *alpha;

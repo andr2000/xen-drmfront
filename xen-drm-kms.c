@@ -75,7 +75,6 @@ int xendrm_du_modeset_init(struct xendrm_du_device *xendrm_du)
 	struct drm_encoder *encoder;
 	struct drm_fbdev_cma *fbdev;
 	unsigned int num_encoders;
-	unsigned int num_groups;
 	unsigned int i;
 	int ret;
 
@@ -91,25 +90,9 @@ int xendrm_du_modeset_init(struct xendrm_du_device *xendrm_du)
 	if (ret < 0)
 		return ret;
 
-	/* Initialize the groups. */
-	num_groups = DIV_ROUND_UP(xendrm_du->num_crtcs, 2);
-
-	for (i = 0; i < num_groups; ++i) {
-		struct xendrm_du_group *rgrp = &xendrm_du->groups[i];
-
-		rgrp->dev = xendrm_du;
-		rgrp->index = i;
-
-		ret = xendrm_du_planes_init(rgrp);
-		if (ret < 0)
-			return ret;
-	}
-
 	/* Create the CRTCs. */
 	for (i = 0; i < xendrm_du->num_crtcs; ++i) {
-		struct xendrm_du_group *rgrp = &xendrm_du->groups[i / 2];
-
-		ret = xendrm_du_crtc_create(rgrp, i);
+		ret = xendrm_du_crtc_create(i);
 		if (ret < 0)
 			return ret;
 	}
