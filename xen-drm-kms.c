@@ -42,27 +42,33 @@ static const struct drm_mode_config_funcs xendrm_du_mode_config_funcs = {
 
 int xendrm_du_modeset_init(struct xendrm_du_device *xendrm_du)
 {
-	struct drm_device *dev = xendrm_du->drm_dev;
+	struct drm_device *drm_dev = xendrm_du->drm_dev;
 	int i, ret;
 
-	drm_mode_config_init(dev);
+	drm_mode_config_init(drm_dev);
 
-	dev->mode_config.min_width = 0;
-	dev->mode_config.min_height = 0;
-	dev->mode_config.max_width = 4095;
-	dev->mode_config.max_height = 2047;
-	dev->mode_config.funcs = &xendrm_du_mode_config_funcs;
+	drm_dev->mode_config.min_width = 0;
+	drm_dev->mode_config.min_height = 0;
+	drm_dev->mode_config.max_width = 4095;
+	drm_dev->mode_config.max_height = 2047;
+	drm_dev->mode_config.funcs = &xendrm_du_mode_config_funcs;
 
 	for (i = 0; i < xendrm_du->num_crtcs; i++) {
 		ret = xendrm_du_crtc_create(xendrm_du, &xendrm_du->crtcs[i], i);
 		if (ret < 0)
 			goto fail;
-
+		ret = xendrm_du_encoder_create(xendrm_du, &xendrm_du->crtcs[i]);
+		if (ret)
+			goto fail;
+		ret = xendrm_du_connector_create(xendrm_du, &xendrm_du->crtcs[i]);
+		if (ret)
+			goto fail;
 	}
-	drm_mode_config_reset(dev);
+	drm_mode_config_reset(drm_dev);
 
-	drm_kms_helper_poll_init(dev);
+	drm_kms_helper_poll_init(drm_dev);
 	return 0;
 fail:
+	drm_mode_config_cleanup(drm_dev);
 	return ret;
 }

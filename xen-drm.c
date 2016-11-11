@@ -146,8 +146,8 @@ int xendrm_probe(struct platform_device *pdev)
 	}
 	ddev->irq_enabled = 1;
 
-	/* Register the DRM device with the core and the connectors with
-	 * sysfs.
+	/* Register the DRM device with the core and the connectors,
+	 * encoders, planes with sysfs.
 	 */
 	ret = drm_dev_register(ddev, 0);
 	if (ret)

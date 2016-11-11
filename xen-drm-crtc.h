@@ -24,7 +24,10 @@ struct xendrm_du_device;
 
 struct xendrm_du_crtc {
 	int index;
+	struct drm_plane primary;
 	struct drm_crtc crtc;
+	struct drm_encoder encoder;
+	struct drm_connector connector;
 	struct drm_fbdev_cma *fbdev;
 	struct {
 		struct drm_property *alpha;
@@ -33,5 +36,9 @@ struct xendrm_du_crtc {
 
 int xendrm_du_crtc_create(struct xendrm_du_device *xendrm_du,
 	struct xendrm_du_crtc *du_crtc, unsigned int index);
+int xendrm_du_encoder_create(struct xendrm_du_device *xendrm_du,
+	struct xendrm_du_crtc *du_crtc);
+int xendrm_du_connector_create(struct xendrm_du_device *xendrm_du,
+	struct xendrm_du_crtc *du_crtc);
 
 #endif /* __XEN_DRM_CRTC_H_ */

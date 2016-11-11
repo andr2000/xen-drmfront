@@ -23,7 +23,6 @@
 static void xendrm_du_crtc_plane_destroy(struct drm_plane *plane)
 {
 	drm_plane_cleanup(plane);
-	devm_kfree(plane->dev->dev, plane);
 }
 
 static int xendrm_du_crtc_props_init(struct xendrm_du_device *xendrm_du,
@@ -58,26 +57,126 @@ static const struct drm_plane_funcs xendrm_du_crtc_drm_plane_funcs = {
 };
 
 static struct drm_plane *xendrm_du_crtc_create_primary(
-	struct xendrm_du_device *xendrm_du, struct xendrm_du_crtc *crtc)
+	struct xendrm_du_device *xendrm_du, struct xendrm_du_crtc *du_crtc)
 {
-	struct drm_plane *primary;
+	struct drm_plane *primary = &du_crtc->primary;
 	int ret;
 
-	primary = devm_kzalloc(xendrm_du->dev, sizeof(*primary), GFP_KERNEL);
-	if (!primary) {
-		DRM_DEBUG_KMS("Failed to allocate primary plane\n");
-		return NULL;
-	}
 	ret = drm_universal_plane_init(xendrm_du->drm_dev, primary, 0,
 		&xendrm_du_crtc_drm_plane_funcs,
 		xendrm_du_drm_plane_formats,
 		ARRAY_SIZE(xendrm_du_drm_plane_formats),
 		DRM_PLANE_TYPE_PRIMARY, NULL);
 	if (ret < 0) {
-		devm_kfree(xendrm_du->dev, primary);
 		return NULL;
 	}
 	return primary;
+}
+
+static void xendrm_du_encoder_destroy(struct drm_encoder *encoder)
+{
+	drm_encoder_cleanup(encoder);
+}
+
+static const struct drm_encoder_funcs xendrm_drm_encoder_funcs = {
+	.destroy = xendrm_du_encoder_destroy,
+};
+
+int xendrm_du_encoder_create(struct xendrm_du_device *xendrm_du,
+	struct xendrm_du_crtc *du_crtc)
+{
+	struct drm_encoder *encoder = &du_crtc->encoder;
+	int ret;
+
+	/* only this CRTC w/o any clones */
+	encoder->possible_crtcs = 1 << du_crtc->index;
+	encoder->possible_clones = 0;
+	ret = drm_encoder_init(xendrm_du->drm_dev, encoder,
+		&xendrm_drm_encoder_funcs, DRM_MODE_ENCODER_VIRTUAL, NULL);
+	if (ret < 0)
+		return ret;
+	return 0;
+}
+
+static void xendrm_du_drm_connector_destroy(struct drm_connector *connector)
+{
+	drm_connector_unregister(connector);
+	drm_connector_cleanup(connector);
+}
+
+static enum drm_connector_status
+xendrm_du_drm_connector_detect(struct drm_connector *connector, bool force)
+{
+	return connector_status_connected;
+}
+
+static int xendrm_du_drm_connector_get_modes(struct drm_connector *connector)
+{
+#if 0
+	struct fsl_dcu_drm_connector *fsl_connector;
+	int (*get_modes)(struct drm_panel *panel);
+	int num_modes = 0;
+
+	fsl_connector = to_fsl_dcu_connector(connector);
+	if (fsl_connector->panel && fsl_connector->panel->funcs &&
+	    fsl_connector->panel->funcs->get_modes) {
+		get_modes = fsl_connector->panel->funcs->get_modes;
+		num_modes = get_modes(fsl_connector->panel);
+	}
+
+	return num_modes;
+#endif
+	return 1;
+}
+
+static int xendrm_du_drm_connector_mode_valid(struct drm_connector *connector,
+					    struct drm_display_mode *mode)
+{
+	if (mode->hdisplay & 0xf)
+		return MODE_ERROR;
+	return MODE_OK;
+}
+
+static const struct drm_connector_helper_funcs xendrm_du_connector_helper_funcs = {
+	.get_modes = xendrm_du_drm_connector_get_modes,
+	.mode_valid = xendrm_du_drm_connector_mode_valid,
+};
+
+static const struct drm_connector_funcs xendrm_du_drm_connector_funcs = {
+	.atomic_duplicate_state = drm_atomic_helper_connector_duplicate_state,
+	.atomic_destroy_state = drm_atomic_helper_connector_destroy_state,
+	.destroy = xendrm_du_drm_connector_destroy,
+	.detect = xendrm_du_drm_connector_detect,
+	.dpms = drm_atomic_helper_connector_dpms,
+	.fill_modes = drm_helper_probe_single_connector_modes,
+	.reset = drm_atomic_helper_connector_reset,
+};
+
+int xendrm_du_connector_create(struct xendrm_du_device *xendrm_du,
+	struct xendrm_du_crtc *du_crtc)
+{
+	struct drm_encoder *encoder = &du_crtc->encoder;
+	struct drm_connector *connector = &du_crtc->connector;
+	struct drm_mode_config *mode_config = &xendrm_du->drm_dev->mode_config;
+	int ret;
+
+	ret = drm_connector_init(xendrm_du->drm_dev, connector,
+		&xendrm_du_drm_connector_funcs, DRM_MODE_CONNECTOR_VIRTUAL);
+	if (ret < 0)
+		return ret;
+	drm_connector_helper_add(connector, &xendrm_du_connector_helper_funcs);
+
+	ret = drm_mode_connector_attach_encoder(connector, encoder);
+	if (ret < 0)
+		goto fail;
+
+	drm_object_property_set_value(&connector->base,
+		mode_config->dpms_property, DRM_MODE_DPMS_ON);
+	return 0;
+
+fail:
+	drm_connector_cleanup(connector);
+	return ret;
 }
 
 static void xendrm_du_crtc_enable(struct drm_crtc *crtc)
@@ -116,6 +215,7 @@ int xendrm_du_crtc_create(struct xendrm_du_device *xendrm_du,
 	struct drm_plane *primary;
 	int ret;
 
+	du_crtc->index = index;
 	ret = xendrm_du_crtc_props_init(xendrm_du, du_crtc);
 	if (ret < 0)
 		return ret;
