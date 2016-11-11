@@ -28,15 +28,8 @@
 struct xendrm_du_device {
 	struct device *dev;
 	struct drm_device *ddev;
-	struct drm_fbdev_cma *fbdev;
-
 	unsigned int num_crtcs;
 	struct xendrm_du_crtc crtcs[XENDRM_DU_MAX_CRTCS];
-
-	struct {
-		struct drm_property *alpha;
-		struct drm_property *colorkey;
-	} props;
 };
 
 struct xendrm_cfg_connector {
