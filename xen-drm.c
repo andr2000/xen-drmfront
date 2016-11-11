@@ -45,7 +45,12 @@ void xendrm_disable_vblank(struct drm_device *dev, unsigned int pipe)
 int xendrm_dumb_create(struct drm_file *file_priv, struct drm_device *dev,
 	struct drm_mode_create_dumb *args)
 {
+	DRM_ERROR("%s\n", __FUNCTION__);
 	return 0;
+}
+
+void xendrm_gem_free_object(struct drm_gem_object *obj)
+{
 }
 
 static const struct file_operations xendrm_fops = {
@@ -59,14 +64,8 @@ static const struct file_operations xendrm_fops = {
 	.poll           = drm_poll,
 	.read           = drm_read,
 	.llseek         = no_llseek,
-#if 0
 	.mmap           = drm_gem_cma_mmap,
-#endif
 };
-
-void xendrm_gem_cma_free_object(struct drm_gem_object *obj)
-{
-}
 
 static struct drm_driver xendrm_driver = {
 	.driver_features           = DRIVER_GEM | DRIVER_MODESET |
@@ -76,25 +75,19 @@ static struct drm_driver xendrm_driver = {
 	.get_vblank_counter        = drm_vblank_count,
 	.enable_vblank             = xendrm_enable_vblank,
 	.disable_vblank            = xendrm_disable_vblank,
-	.gem_free_object           = xendrm_gem_cma_free_object,
-#if 0
+	.gem_free_object           = xendrm_gem_free_object,
 	.gem_vm_ops                = &drm_gem_cma_vm_ops,
-#endif
 	.prime_handle_to_fd        = drm_gem_prime_handle_to_fd,
 	.prime_fd_to_handle        = drm_gem_prime_fd_to_handle,
 	.gem_prime_import          = drm_gem_prime_import,
 	.gem_prime_export          = drm_gem_prime_export,
-#if 0
 	.gem_prime_get_sg_table    = drm_gem_cma_prime_get_sg_table,
 	.gem_prime_import_sg_table = drm_gem_cma_prime_import_sg_table,
 	.gem_prime_vmap            = drm_gem_cma_prime_vmap,
 	.gem_prime_vunmap          = drm_gem_cma_prime_vunmap,
 	.gem_prime_mmap            = drm_gem_cma_prime_mmap,
-#endif
 	.dumb_create               = xendrm_dumb_create,
-#if 0
 	.dumb_map_offset           = drm_gem_cma_dumb_map_offset,
-#endif
 	.dumb_destroy              = drm_gem_dumb_destroy,
 	.fops                      = &xendrm_fops,
 	.name                      = "xendrm-du",

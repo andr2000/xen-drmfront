@@ -18,6 +18,8 @@
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_plane_helper.h>
 
+#include <video/videomode.h>
+
 #include "xen-drm.h"
 
 static int xendrm_du_crtc_props_init(struct xendrm_du_device *xendrm_du,
@@ -94,28 +96,83 @@ xendrm_du_drm_connector_detect(struct drm_connector *connector, bool force)
 	return connector_status_connected;
 }
 
+static const struct videomode xendrm_def_videomode = {
+	.pixelclock = 60 * 1344 * 806,
+	.hactive = 1024,
+	.hfront_porch = 24,
+	.hback_porch = 136,
+	.hsync_len = 160,
+	.vactive = 768,
+	.vfront_porch = 3,
+	.vback_porch = 6,
+	.vsync_len = 29,
+	.flags = 0,
+};
+
+void __drm_display_mode_from_videomode(const struct videomode *vm,
+                                     struct drm_display_mode *dmode)
+{
+        dmode->hdisplay = vm->hactive;
+        dmode->hsync_start = dmode->hdisplay + vm->hfront_porch;
+        dmode->hsync_end = dmode->hsync_start + vm->hsync_len;
+        dmode->htotal = dmode->hsync_end + vm->hback_porch;
+
+        dmode->vdisplay = vm->vactive;
+        dmode->vsync_start = dmode->vdisplay + vm->vfront_porch;
+        dmode->vsync_end = dmode->vsync_start + vm->vsync_len;
+        dmode->vtotal = dmode->vsync_end + vm->vback_porch;
+
+        dmode->clock = vm->pixelclock / 1000;
+
+        dmode->flags = 0;
+        if (vm->flags & DISPLAY_FLAGS_HSYNC_HIGH)
+                dmode->flags |= DRM_MODE_FLAG_PHSYNC;
+        else if (vm->flags & DISPLAY_FLAGS_HSYNC_LOW)
+                dmode->flags |= DRM_MODE_FLAG_NHSYNC;
+        if (vm->flags & DISPLAY_FLAGS_VSYNC_HIGH)
+                dmode->flags |= DRM_MODE_FLAG_PVSYNC;
+        else if (vm->flags & DISPLAY_FLAGS_VSYNC_LOW)
+                dmode->flags |= DRM_MODE_FLAG_NVSYNC;
+        if (vm->flags & DISPLAY_FLAGS_INTERLACED)
+                dmode->flags |= DRM_MODE_FLAG_INTERLACE;
+        if (vm->flags & DISPLAY_FLAGS_DOUBLESCAN)
+                dmode->flags |= DRM_MODE_FLAG_DBLSCAN;
+        if (vm->flags & DISPLAY_FLAGS_DOUBLECLK)
+                dmode->flags |= DRM_MODE_FLAG_DBLCLK;
+        drm_mode_set_name(dmode);
+}
+
 static int xendrm_du_drm_connector_get_modes(struct drm_connector *connector)
 {
-#if 0
-	struct fsl_dcu_drm_connector *fsl_connector;
-	int (*get_modes)(struct drm_panel *panel);
-	int num_modes = 0;
+	struct drm_display_mode *mode;
+	struct drm_device *dev = connector->dev;
+	struct platform_device *pdev = dev->platformdev;
+	struct xendrm_plat_data *platdata = pdev->dev.platform_data;
+	struct videomode videomode;
+	int i, width, height;
 
-	fsl_connector = to_fsl_dcu_connector(connector);
-	if (fsl_connector->panel && fsl_connector->panel->funcs &&
-	    fsl_connector->panel->funcs->get_modes) {
-		get_modes = fsl_connector->panel->funcs->get_modes;
-		num_modes = get_modes(fsl_connector->panel);
-	}
-
-	return num_modes;
-#endif
+	mode = drm_mode_create(connector->dev);
+	if (!mode)
+		return 0;
+	videomode = xendrm_def_videomode;
+	videomode.hactive = 1200;
+	videomode.vactive = 800;
+	/* fixup the default value */
+	width = videomode.hactive + videomode.hfront_porch +
+		videomode.hback_porch + videomode.hsync_len;
+	height = videomode.vactive + videomode.vfront_porch +
+		videomode.vback_porch + videomode.vsync_len;
+	videomode.pixelclock = width * height * 60;
+	mode->type = DRM_MODE_TYPE_PREFERRED | DRM_MODE_TYPE_DRIVER;
+	__drm_display_mode_from_videomode(&videomode, mode);
+	drm_mode_probed_add(connector, mode);
 	return 1;
 }
 
 static int xendrm_du_drm_connector_mode_valid(struct drm_connector *connector,
 					    struct drm_display_mode *mode)
 {
+	DRM_ERROR("%s\n", __FUNCTION__);
 	if (mode->hdisplay & 0xf)
 		return MODE_ERROR;
 	return MODE_OK;
