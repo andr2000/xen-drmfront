@@ -91,13 +91,12 @@ struct xdrv_info {
 	spinlock_t io_lock;
 	struct mutex mutex;
 	bool ddrv_registered;
-	/* array of virtual DRM platform devices */
-	struct platform_device **ddrv_devs;
+	/* virtual DRM platform devices */
+	struct platform_device *ddrv_dev;
 
 	int num_evt_pairs;
 	struct xdrv_evtchnl_pair_info *evt_pairs;
-	int cfg_num_cards;
-	struct xendrm_plat_data *cfg_plat_data;
+	struct xendrm_plat_data cfg_plat_data;
 };
 
 struct DRMIF_TO_KERN_ERROR {
@@ -140,52 +139,32 @@ static struct platform_driver ddrv_info = {
 
 static void ddrv_cleanup(struct xdrv_info *drv_info)
 {
-	int i;
-
 	if (!drv_info->ddrv_registered)
 		return;
-	if (drv_info->ddrv_devs) {
-		for (i = 0; i < drv_info->cfg_num_cards; i++) {
-			struct platform_device *ddrv_dev;
-
-			ddrv_dev = drv_info->ddrv_devs[i];
-			if (ddrv_dev)
-				platform_device_unregister(ddrv_dev);
-		}
-	}
+	if (drv_info->ddrv_dev)
+		platform_device_unregister(drv_info->ddrv_dev);
 	platform_driver_unregister(&ddrv_info);
 	drv_info->ddrv_registered = false;
+	drv_info->ddrv_dev = NULL;
 }
 
 static int ddrv_init(struct xdrv_info *drv_info)
 {
-	int i, num_cards, ret;
+	struct xendrm_plat_data *platdata;
+	int ret;
 
 	ret = platform_driver_register(&ddrv_info);
 	if (ret < 0)
 		return ret;
 	drv_info->ddrv_registered = true;
-
-	num_cards = drv_info->cfg_num_cards;
-	drv_info->ddrv_devs = devm_kzalloc(&drv_info->xb_dev->dev,
-			sizeof(drv_info->ddrv_devs[0]) * num_cards,
-			GFP_KERNEL);
-	if (!drv_info->ddrv_devs)
+	platdata = &drv_info->cfg_plat_data;
+	/* pass card configuration via platform data */
+	drv_info->ddrv_dev = platform_device_register_data(NULL,
+		XENDRM_DRIVER_NAME, 0, platdata,
+		sizeof(*platdata));
+	if (IS_ERR(drv_info->ddrv_dev)) {
+		drv_info->ddrv_dev = NULL;
 		goto fail;
-	for (i = 0; i < num_cards; i++) {
-		struct platform_device *ddrv_dev;
-		struct xendrm_plat_data *platdata;
-
-		platdata = &drv_info->cfg_plat_data[i];
-		/* pass card configuration via platform data */
-		ddrv_dev = platform_device_register_data(NULL,
-			XENDRM_DRIVER_NAME, platdata->index, platdata,
-			sizeof(*platdata));
-		drv_info->ddrv_devs[i] = ddrv_dev;
-		if (IS_ERR(ddrv_dev)) {
-			drv_info->ddrv_devs[i] = NULL;
-			goto fail;
-		}
 	}
 	return 0;
 
@@ -439,43 +418,38 @@ static inline void xdrv_evtchnl_flush(
 		notify_remote_via_irq(channel->irq);
 }
 
-static int xdrv_evtchnl_create_all(struct xdrv_info *drv_info,
-		int num_connectors)
+static int xdrv_evtchnl_create_all(struct xdrv_info *drv_info)
 {
-	int ret, card, conn;
+	struct xendrm_plat_data *plat_data;
+	int ret, conn;
 
+	plat_data = &drv_info->cfg_plat_data;
 	drv_info->evt_pairs = devm_kcalloc(&drv_info->xb_dev->dev,
-		num_connectors, sizeof(struct xdrv_evtchnl_pair_info),
-		GFP_KERNEL);
+		plat_data->num_connectors,
+		sizeof(struct xdrv_evtchnl_pair_info), GFP_KERNEL);
 	if (!drv_info->evt_pairs) {
 		ret = -ENOMEM;
 		goto fail;
 	}
-	for (card = 0; card < drv_info->cfg_num_cards; card++) {
-		struct xendrm_plat_data *plat_data;
-
-		plat_data = &drv_info->cfg_plat_data[card];
-
-		for (conn = 0; conn < plat_data->cfg_card.num_connectors; conn++) {
-			ret = xdrv_evtchnl_create(drv_info,
-				&drv_info->evt_pairs[conn].ctrl,
-				EVTCHNL_TYPE_CTRL,
-				plat_data->cfg_card.connectors[conn].xenstore_path,
-				XENDRM_FIELD_CTRL_RING_REF,
-				XENDRM_FIELD_CTRL_CHANNEL);
-			if (ret < 0)
-				goto fail;
-			ret = xdrv_evtchnl_create(drv_info,
-				&drv_info->evt_pairs[conn].evt,
-				EVTCHNL_TYPE_EVT,
-				plat_data->cfg_card.connectors[conn].xenstore_path,
-				XENDRM_FIELD_EVT_RING_REF,
-				XENDRM_FIELD_EVT_CHANNEL);
-			if (ret < 0)
-				goto fail;
-		}
+	for (conn = 0; conn < plat_data->num_connectors; conn++) {
+		ret = xdrv_evtchnl_create(drv_info,
+			&drv_info->evt_pairs[conn].ctrl,
+			EVTCHNL_TYPE_CTRL,
+			plat_data->connectors[conn].xenstore_path,
+			XENDRM_FIELD_CTRL_RING_REF,
+			XENDRM_FIELD_CTRL_CHANNEL);
+		if (ret < 0)
+			goto fail;
+		ret = xdrv_evtchnl_create(drv_info,
+			&drv_info->evt_pairs[conn].evt,
+			EVTCHNL_TYPE_EVT,
+			plat_data->connectors[conn].xenstore_path,
+			XENDRM_FIELD_EVT_RING_REF,
+			XENDRM_FIELD_EVT_CHANNEL);
+		if (ret < 0)
+			goto fail;
 	}
-	drv_info->num_evt_pairs = num_connectors;
+	drv_info->num_evt_pairs = plat_data->num_connectors;
 	return 0;
 fail:
 	xdrv_evtchnl_free_all(drv_info);
@@ -506,7 +480,7 @@ static int xdrv_cfg_connector(struct xdrv_info *drv_info,
 	int ret;
 
 	connector_path = devm_kasprintf(&drv_info->xb_dev->dev,
-		GFP_KERNEL, "%s/%d", path, index);
+		GFP_KERNEL, "%s/%s/%d", path, XENDRM_PATH_CONNECTOR, index);
 	if (!connector_path)
 		return -ENOMEM;
 	connector->xenstore_path = connector_path;
@@ -544,57 +518,33 @@ static int xdrv_cfg_card(struct xdrv_info *drv_info,
 	struct xendrm_plat_data *plat_data)
 {
 	struct xenbus_device *xb_dev = drv_info->xb_dev;
-	char *path;
+	const char *path;
 	char **connector_nodes = NULL;
 	int ret, num_conn, i;
 
-	path = kasprintf(GFP_KERNEL, "%s/" XENDRM_PATH_CARD "/%d",
-		xb_dev->nodename, plat_data->index);
-	if (!path) {
-		ret = -ENOMEM;
-		goto fail;
-	}
+	path = xb_dev->nodename;
+	plat_data->num_connectors = 0;
 	connector_nodes = xdrv_cfg_get_num_nodes(path, XENDRM_PATH_CONNECTOR,
 		&num_conn);
 	kfree(connector_nodes);
 	if (!num_conn) {
-		LOG0("No connectors configured for DRM card %d at %s/%s",
-			plat_data->index, path, XENDRM_PATH_CONNECTOR);
-		ret = -ENODEV;
-		goto fail;
+		LOG0("No connectors configured at %s/%s",
+			path, XENDRM_PATH_CONNECTOR);
+		return -ENODEV;
 	}
 	if (num_conn > XENDRM_DU_MAX_CRTCS) {
 		LOG0("Only %d connectors supported, skipping the rest",
 			XENDRM_DU_MAX_CRTCS);
 		num_conn = XENDRM_DU_MAX_CRTCS;
 	}
-	plat_data->cfg_card.connectors = devm_kcalloc(
-		&drv_info->xb_dev->dev,
-		num_conn, sizeof(struct xendrm_cfg_connector),
-		GFP_KERNEL);
-	if (!plat_data->cfg_card.connectors) {
-		ret = -ENOMEM;
-		goto fail;
-	}
-	kfree(path);
-	path = kasprintf(GFP_KERNEL,
-		"%s/" XENDRM_PATH_CARD "/%d/" XENDRM_PATH_CONNECTOR,
-		xb_dev->nodename, plat_data->index);
-	if (!path) {
-		ret = -ENOMEM;
-		goto fail;
-	}
 	for (i = 0; i < num_conn; i++) {
 		ret = xdrv_cfg_connector(drv_info,
-			&plat_data->cfg_card.connectors[i], path, i);
+			&plat_data->connectors[i], path, i);
 		if (ret < 0)
-			goto fail;
+			return ret;
 	}
-	plat_data->cfg_card.num_connectors = num_conn;
-	ret = 0;
-fail:
-	kfree(path);
-	return ret;
+	plat_data->num_connectors = num_conn;
+	return 0;
 }
 
 static void xdrv_remove_internal(struct xdrv_info *drv_info)
@@ -799,41 +749,17 @@ static int xdrv_sh_buf_alloc(struct xenbus_device *xb_dev,
 
 static int xdrv_be_on_initwait(struct xdrv_info *drv_info)
 {
-	struct xenbus_device *xb_dev = drv_info->xb_dev;
-	char **card_nodes;
-	int i, ret, num_connectors;
+	struct xendrm_plat_data *cfg_plat_data;
+	int ret;
 
-	card_nodes = xdrv_cfg_get_num_nodes(xb_dev->nodename,
-		XENDRM_PATH_CARD, &drv_info->cfg_num_cards);
-	kfree(card_nodes);
-	if (!drv_info->cfg_num_cards) {
-		LOG0("No DRM cards configured");
-		return 0;
-	}
-	LOG0("Have %d card(s)", drv_info->cfg_num_cards);
-	drv_info->cfg_plat_data = devm_kzalloc(&drv_info->xb_dev->dev,
-		drv_info->cfg_num_cards *
-		sizeof(struct xendrm_plat_data), GFP_KERNEL);
-	if (!drv_info->cfg_plat_data)
-		return -ENOMEM;
-	num_connectors = 0;
-	for (i = 0; i < drv_info->cfg_num_cards; i++) {
-		struct xendrm_plat_data *cfg_plat_data;
-
-		cfg_plat_data = &drv_info->cfg_plat_data[i];
-		cfg_plat_data->index = i;
-		cfg_plat_data->xdrv_info = drv_info;
-		ret = xdrv_cfg_card(drv_info, cfg_plat_data);
-		if (ret < 0)
-			return ret;
-		LOG0("Have %d conectors for card %d",
-			cfg_plat_data->cfg_card.num_connectors,
-			drv_info->cfg_num_cards);
-		num_connectors +=
-			cfg_plat_data->cfg_card.num_connectors;
-	}
+	cfg_plat_data = &drv_info->cfg_plat_data;
+	cfg_plat_data->xdrv_info = drv_info;
+	ret = xdrv_cfg_card(drv_info, cfg_plat_data);
+	if (ret < 0)
+		return ret;
+	LOG0("Have %d conectors", cfg_plat_data->num_connectors);
 	/* create event channels for all streams and publish */
-	return xdrv_evtchnl_create_all(drv_info, num_connectors);
+	return xdrv_evtchnl_create_all(drv_info);
 }
 
 static int xdrv_be_on_connected(struct xdrv_info *drv_info)

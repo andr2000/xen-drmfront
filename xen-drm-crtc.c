@@ -66,11 +66,8 @@ static const struct videomode xendrm_def_videomode = {
 static int xendrm_du_drm_connector_get_modes(struct drm_connector *connector)
 {
 	struct drm_display_mode *mode;
-	struct drm_device *dev = connector->dev;
-	struct platform_device *pdev = dev->platformdev;
-	struct xendrm_plat_data *platdata = pdev->dev.platform_data;
 	struct videomode videomode;
-	int i, width, height;
+	int width, height;
 
 	mode = drm_mode_create(connector->dev);
 	if (!mode)

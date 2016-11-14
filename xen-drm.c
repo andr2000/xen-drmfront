@@ -105,7 +105,7 @@ int xendrm_probe(struct platform_device *pdev)
 	int ret;
 
 	platdata = dev_get_platdata(&pdev->dev);
-	LOG0("Creating virtual DRM card %d", platdata->index);
+	LOG0("Creating %s", xendrm_driver.desc);
 	/* Allocate and initialize the DRM and xendrm device structures. */
 	xendrm_du = devm_kzalloc(&pdev->dev, sizeof(*xendrm_du), GFP_KERNEL);
 	if (!xendrm_du)
@@ -121,7 +121,7 @@ int xendrm_probe(struct platform_device *pdev)
 	/*
 	 * FIXME: assume 1 CRTC and 1 Encoder per each connector
 	 */
-	xendrm_du->num_crtcs = platdata->cfg_card.num_connectors;
+	xendrm_du->num_crtcs = platdata->num_connectors;
 	xendrm_du->platdata = platdata;
 	ddev->dev_private = xendrm_du;
 	platform_set_drvdata(pdev, xendrm_du);

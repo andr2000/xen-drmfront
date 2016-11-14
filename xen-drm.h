@@ -42,16 +42,14 @@ struct xendrm_cfg_connector {
 };
 
 struct xendrm_cfg_card {
-	/* number of connectors in this configuration */
-	int num_connectors;
-	/* connector configurations */
-	struct xendrm_cfg_connector *connectors;
 };
 
 struct xendrm_plat_data {
-	int index;
 	struct xdrv_info *xdrv_info;
-	struct xendrm_cfg_card cfg_card;
+	/* number of connectors in this configuration */
+	int num_connectors;
+	/* connector configurations */
+	struct xendrm_cfg_connector connectors[XENDRM_DU_MAX_CRTCS];
 };
 
 int xendrm_probe(struct platform_device *pdev);
