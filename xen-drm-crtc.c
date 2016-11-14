@@ -51,20 +51,24 @@ xendrm_du_drm_connector_detect(struct drm_connector *connector, bool force)
 #define XENDRM_NUM_VIDEO_MODES	1
 
 static const struct videomode xendrm_def_videomode = {
-	.pixelclock = 60 * 1344 * 806,
+	.pixelclock = 60 * 1024 * 768,
 	.hactive = 1024,
-	.hfront_porch = 24,
-	.hback_porch = 136,
-	.hsync_len = 160,
+	.hfront_porch = 0,
+	.hback_porch = 0,
+	.hsync_len = 0,
 	.vactive = 768,
-	.vfront_porch = 3,
-	.vback_porch = 6,
-	.vsync_len = 29,
+	.vfront_porch = 0,
+	.vback_porch = 0,
+	.vsync_len = 0,
 	.flags = 0,
 };
 
+#define to_xendrm_connector(e) \
+	container_of(e, struct xendrm_du_connector, base)
+
 static int xendrm_du_drm_connector_get_modes(struct drm_connector *connector)
 {
+	struct xendrm_du_connector *du_connector;
 	struct drm_display_mode *mode;
 	struct videomode videomode;
 	int width, height;
@@ -73,8 +77,9 @@ static int xendrm_du_drm_connector_get_modes(struct drm_connector *connector)
 	if (!mode)
 		return 0;
 	videomode = xendrm_def_videomode;
-	videomode.hactive = 1200;
-	videomode.vactive = 800;
+	du_connector = to_xendrm_connector(connector);
+	videomode.hactive = du_connector->width;
+	videomode.vactive = du_connector->height;
 	/* fixup the default value */
 	width = videomode.hactive + videomode.hfront_porch +
 		videomode.hback_porch + videomode.hsync_len;
@@ -90,7 +95,11 @@ static int xendrm_du_drm_connector_get_modes(struct drm_connector *connector)
 static int xendrm_du_drm_connector_mode_valid(struct drm_connector *connector,
 					    struct drm_display_mode *mode)
 {
-	if (mode->hdisplay & 0xf)
+	struct xendrm_du_connector *du_connector =
+		to_xendrm_connector(connector);
+	if (mode->hdisplay != du_connector->width)
+		return MODE_ERROR;
+	if (mode->vdisplay != du_connector->height)
 		return MODE_ERROR;
 	return MODE_OK;
 }
@@ -111,13 +120,16 @@ static const struct drm_connector_funcs xendrm_du_drm_connector_funcs = {
 };
 
 int xendrm_du_connector_create(struct xendrm_du_device *xendrm_du,
-	struct xendrm_du_crtc *du_crtc)
+	struct xendrm_du_crtc *du_crtc, struct xendrm_cfg_connector *cfg)
 {
 	struct drm_encoder *encoder = &du_crtc->encoder;
-	struct drm_connector *connector = &du_crtc->connector;
+	struct drm_connector *connector = &du_crtc->connector.base;
 	struct drm_mode_config *mode_config = &xendrm_du->drm_dev->mode_config;
 	int ret;
 
+	du_crtc->connector.width = cfg->width;
+	du_crtc->connector.height = cfg->height;
+	du_crtc->connector.xen_id = cfg->id;
 	ret = drm_connector_init(xendrm_du->drm_dev, connector,
 		&xendrm_du_drm_connector_funcs, DRM_MODE_CONNECTOR_VIRTUAL);
 	if (ret < 0)

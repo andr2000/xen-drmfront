@@ -55,13 +55,17 @@ int xendrm_du_modeset_init(struct xendrm_du_device *xendrm_du)
 	drm_dev->mode_config.funcs = &xendrm_du_mode_config_funcs;
 
 	for (i = 0; i < xendrm_du->num_crtcs; i++) {
-		ret = xendrm_du_crtc_create(xendrm_du, &xendrm_du->crtcs[i], i);
+		struct xendrm_du_crtc *crtc;
+
+		crtc = &xendrm_du->crtcs[i];
+		ret = xendrm_du_crtc_create(xendrm_du, crtc, i);
 		if (ret < 0)
 			goto fail;
-		ret = xendrm_du_encoder_create(xendrm_du, &xendrm_du->crtcs[i]);
+		ret = xendrm_du_encoder_create(xendrm_du, crtc);
 		if (ret)
 			goto fail;
-		ret = xendrm_du_connector_create(xendrm_du, &xendrm_du->crtcs[i]);
+		ret = xendrm_du_connector_create(xendrm_du, crtc,
+			&xendrm_du->platdata->connectors[i]);
 		if (ret)
 			goto fail;
 	}
