@@ -42,13 +42,6 @@ void xendrm_disable_vblank(struct drm_device *dev, unsigned int pipe)
 {
 }
 
-int xendrm_dumb_create(struct drm_file *file_priv, struct drm_device *dev,
-	struct drm_mode_create_dumb *args)
-{
-	DRM_ERROR("%s\n", __FUNCTION__);
-	return 0;
-}
-
 void xendrm_gem_free_object(struct drm_gem_object *obj)
 {
 }
@@ -86,7 +79,7 @@ static struct drm_driver xendrm_driver = {
 	.gem_prime_vmap            = drm_gem_cma_prime_vmap,
 	.gem_prime_vunmap          = drm_gem_cma_prime_vunmap,
 	.gem_prime_mmap            = drm_gem_cma_prime_mmap,
-	.dumb_create               = xendrm_dumb_create,
+	.dumb_create               = drm_gem_cma_dumb_create,
 	.dumb_map_offset           = drm_gem_cma_dumb_map_offset,
 	.dumb_destroy              = drm_gem_dumb_destroy,
 	.fops                      = &xendrm_fops,
