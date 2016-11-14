@@ -129,6 +129,13 @@ static int ddrv_remove(struct platform_device *pdev)
 	return xendrm_remove(pdev);
 }
 
+struct platform_device_info ddrv_platform_info = {
+	.name = XENDRM_DRIVER_NAME,
+	.id = 0,
+	.num_res = 0,
+	.dma_mask = DMA_BIT_MASK(32),
+};
+
 static struct platform_driver ddrv_info = {
 	.probe		= ddrv_probe,
 	.remove		= ddrv_remove,
@@ -151,6 +158,7 @@ static void ddrv_cleanup(struct xdrv_info *drv_info)
 static int ddrv_init(struct xdrv_info *drv_info)
 {
 	struct xendrm_plat_data *platdata;
+	struct platform_device_info platform_info;
 	int ret;
 
 	ret = platform_driver_register(&ddrv_info);
@@ -159,9 +167,10 @@ static int ddrv_init(struct xdrv_info *drv_info)
 	drv_info->ddrv_registered = true;
 	platdata = &drv_info->cfg_plat_data;
 	/* pass card configuration via platform data */
-	drv_info->ddrv_dev = platform_device_register_data(NULL,
-		XENDRM_DRIVER_NAME, 0, platdata,
-		sizeof(*platdata));
+	platform_info = ddrv_platform_info;
+	platform_info.data = platdata;
+	platform_info.size_data = sizeof(struct xendrm_plat_data);
+	drv_info->ddrv_dev = platform_device_register_full(&platform_info);
 	if (IS_ERR(drv_info->ddrv_dev)) {
 		drv_info->ddrv_dev = NULL;
 		goto fail;
