@@ -42,15 +42,32 @@ void xendrm_disable_vblank(struct drm_device *dev, unsigned int pipe)
 {
 }
 
-int xendrm_dumb_create(struct drm_file *file_priv, struct drm_device *dev,
+static int xendrm_dumb_create(struct drm_file *file_priv, struct drm_device *dev,
 	struct drm_mode_create_dumb *args)
 {
-	DRM_ERROR("%s\n", __FUNCTION__);
+	struct drm_gem_object *gem_obj;
+	int ret;
+
+	ret = drm_gem_cma_dumb_create(file_priv, dev, args);
+	if (ret)
+		goto fail;
+	gem_obj = drm_gem_object_lookup(file_priv, args->handle);
+	if (!gem_obj) {
+		ret = -ENOMEM;
+		goto fail;
+	}
+	drm_gem_object_unreference_unlocked(gem_obj);
+	DRM_DEBUG("%s width %d height %d bpp %d pitch %d flags %d size %llu\n",
+		__FUNCTION__, args->width, args->height, args->bpp,
+		args->pitch, args->flags, args->size);
 	return 0;
+fail:
+	return ret;
 }
 
 void xendrm_gem_free_object(struct drm_gem_object *obj)
 {
+	drm_gem_cma_free_object(obj);
 }
 
 static const struct file_operations xendrm_fops = {
