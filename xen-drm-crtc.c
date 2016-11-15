@@ -161,6 +161,37 @@ static const uint32_t xendrm_du_drm_plane_formats[] = {
 	DRM_FORMAT_YUV422,
 };
 
+static int xendrm_du_plane_atomic_check(struct drm_plane *plane,
+					  struct drm_plane_state *state)
+{
+	struct drm_framebuffer *fb = state->fb;
+	int i;
+
+	if (!state->fb || !state->crtc)
+		return 0;
+
+	for (i = 0; i < ARRAY_SIZE(xendrm_du_drm_plane_formats); i++)
+		if (fb->pixel_format == xendrm_du_drm_plane_formats[i])
+			return 0;
+	return -EINVAL;
+}
+
+static void xendrm_du_plane_atomic_disable(struct drm_plane *plane,
+	struct drm_plane_state *old_state)
+{
+}
+
+static void xendrm_du_plane_atomic_update(struct drm_plane *plane,
+	struct drm_plane_state *old_state)
+{
+}
+
+static const struct drm_plane_helper_funcs xendrm_du_plane_helper_funcs = {
+	.atomic_check = xendrm_du_plane_atomic_check,
+	.atomic_disable = xendrm_du_plane_atomic_disable,
+	.atomic_update = xendrm_du_plane_atomic_update,
+};
+
 static const struct drm_plane_funcs xendrm_du_crtc_drm_plane_funcs = {
 	.atomic_duplicate_state = drm_atomic_helper_plane_duplicate_state,
 	.atomic_destroy_state = drm_atomic_helper_plane_destroy_state,
@@ -184,6 +215,7 @@ static struct drm_plane *xendrm_du_crtc_create_primary(
 	if (ret < 0) {
 		return NULL;
 	}
+	drm_plane_helper_add(primary, &xendrm_du_plane_helper_funcs);
 	return primary;
 }
 
