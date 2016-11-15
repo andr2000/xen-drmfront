@@ -27,7 +27,8 @@ static struct drm_framebuffer *
 xendrm_du_fb_create(struct drm_device *dev, struct drm_file *file_priv,
 	const struct drm_mode_fb_cmd2 *mode_cmd)
 {
-	return NULL;
+	DRM_ERROR("%s\n", __FUNCTION__);
+	return drm_fb_cma_create(dev, file_priv, mode_cmd);;
 }
 
 static void xendrm_du_output_poll_changed(struct drm_device *dev)
