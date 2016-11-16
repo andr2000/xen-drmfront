@@ -199,21 +199,21 @@ int xendrm_front_fb_create(struct platform_device *pdev,
 
 int xendrm_front_fb_destroy(struct platform_device *pdev, int fb_id)
 {
-	struct xdrv_info *xdrv_info = to_xendrm_xdrv_info(&pdev);
+	struct xdrv_info *drv_info = to_xendrm_xdrv_info(&pdev);
 	struct xdrv_evtchnl_info *evtchnl;
 	struct xendrm_req *req;
 	unsigned long flags;
 	int ret;
 
-	evtchnl = &xdrv_info->evt_pairs[GENERIC_OP_EVT_CHNL].ctrl;
+	evtchnl = &drv_info->evt_pairs[GENERIC_OP_EVT_CHNL].ctrl;
 	if (unlikely(!evtchnl))
 		return -EIO;
-	mutex_lock(&xdrv_info->io_generic_evt_lock);
-	spin_lock_irqsave(&xdrv_info->io_lock, flags);
+	mutex_lock(&drv_info->io_generic_evt_lock);
+	spin_lock_irqsave(&drv_info->io_lock, flags);
 	req = ddrv_be_prepare_req(evtchnl, XENDRM_OP_FB_DESTROY);
 	req->u.data.op.fb_destroy.fb_id = fb_id;
 	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
-	mutex_unlock(&xdrv_info->io_generic_evt_lock);
+	mutex_unlock(&drv_info->io_generic_evt_lock);
 	return ret;
 }
 
