@@ -41,6 +41,11 @@
 /* timeout in ms to wait for backend to respond */
 #define VDRM_WAIT_BACK_MS	5000
 
+/* all operations which are not CRTC centris use this ctrl event channel,
+ * e.g. fb_create/destroy which belong to a DRM device, not to a CRTC
+ */
+#define GENERIC_OP_EVT_CHNL	0
+
 enum xdrv_evtchnl_state {
 	EVTCHNL_STATE_DISCONNECTED,
 	EVTCHNL_STATE_CONNECTED,
@@ -191,10 +196,20 @@ int xendrm_front_fb_create(struct platform_device *pdev,
 }
 
 
-int xendrm_front_fb_destroy(struct platform_device *pdev,
-	struct drm_framebuffer *fb)
+int xendrm_front_fb_destroy(struct platform_device *pdev, int fb_id)
 {
-	return 0;
+	struct xdrv_info *xdrv_info = to_xendrm_xdrv_info(&pdev);
+	struct xdrv_evtchnl_info *evtchnl;
+	struct xendrm_req *req;
+	unsigned long flags;
+
+	evtchnl = &xdrv_info->evt_pairs[GENERIC_OP_EVT_CHNL].ctrl;
+	if (unlikely(!evtchnl))
+		return -EIO;
+	spin_lock_irqsave(&xdrv_info->io_lock, flags);
+	req = ddrv_be_prepare_req(evtchnl, XENDRM_OP_FB_DESTROY);
+	req->u.data.op.fb_destroy.fb_id = fb_id;
+	return ddrv_be_stream_do_io(evtchnl, req, flags);
 }
 
 

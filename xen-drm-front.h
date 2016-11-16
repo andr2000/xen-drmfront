@@ -27,7 +27,7 @@ struct xendrm_front_funcs {
 	int (*dumb_create)(struct platform_device *pdev, struct drm_gem_object *gem_obj);
 	int (*dumb_destroy)(struct platform_device *pdev, struct drm_gem_object *gem_obj);
 	int (*fb_create)(struct platform_device *pdev, struct drm_framebuffer *fb);
-	int (*fb_destroy)(struct platform_device *pdev, struct drm_framebuffer *fb);
+	int (*fb_destroy)(struct platform_device *pdev, int fb_id);
 	int (*page_flip)(struct platform_device *pdev, int crtc_id, int fb_id);
 	/* CAUTION! this is called with a spin_lock held! */
 	void (*on_page_flip)(struct platform_device *pdev, int fb_id);

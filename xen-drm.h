@@ -27,6 +27,9 @@
 
 struct xendrm_front_funcs;
 
+#define to_xendrm_du_device(e) \
+	container_of(e, struct xendrm_du_device, drm_dev)
+
 struct xendrm_du_device {
 	struct xendrm_front_funcs *front_funcs;
 	struct platform_device *pdev;

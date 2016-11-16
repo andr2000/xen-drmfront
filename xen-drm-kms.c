@@ -21,11 +21,15 @@
 #include <drm/drm_fb_cma_helper.h>
 
 #include "xen-drm.h"
+#include "xen-drm-front.h"
 #include "xen-drm-kms.h"
 
 void xendrm_du_fb_destroy(struct drm_framebuffer *fb)
 {
-	return drm_fb_cma_destroy(fb);
+	struct xendrm_du_device *xendrm_du = to_xendrm_du_device(&fb->dev);
+
+	xendrm_du->front_funcs->fb_destroy(xendrm_du->pdev, fb->base.id);
+	drm_fb_cma_destroy(fb);
 }
 
 static struct drm_framebuffer_funcs xendr_du_fb_funcs = {
