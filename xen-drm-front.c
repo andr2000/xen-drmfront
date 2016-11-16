@@ -120,6 +120,34 @@ static int drmif_to_kern_error(int drmif_err)
 	return -EIO;
 }
 
+static inline void xdrv_evtchnl_flush(
+		struct xdrv_evtchnl_info *channel);
+
+/* CAUTION!!! Call this with the spin lock held.
+ * This function will release it
+ */
+static int ddrv_be_stream_do_io(struct xdrv_evtchnl_info *evtchnl,
+	struct xendrm_req *req, unsigned long flags)
+{
+	int ret;
+
+	reinit_completion(&evtchnl->u.ctrl.completion);
+	if (unlikely(evtchnl->state != EVTCHNL_STATE_CONNECTED)) {
+		spin_unlock_irqrestore(&evtchnl->drv_info->io_lock, flags);
+		return -EIO;
+	}
+	xdrv_evtchnl_flush(evtchnl);
+	spin_unlock_irqrestore(&evtchnl->drv_info->io_lock, flags);
+	ret = 0;
+	if (wait_for_completion_interruptible_timeout(
+			&evtchnl->u.ctrl.completion,
+			msecs_to_jiffies(VDRM_WAIT_BACK_MS)) <= 0)
+		ret = -ETIMEDOUT;
+	if (ret < 0)
+		return ret;
+	return drmif_to_kern_error(evtchnl->u.ctrl.resp_status);
+}
+
 int xendrm_front_mode_set(struct xendrm_du_crtc *du_crtc)
 {
 	return 0;
