@@ -127,9 +127,6 @@ static int drmif_to_kern_error(int drmif_err)
 	return -EIO;
 }
 
-#define to_xendrm_xdrv_info(e) \
-	container_of(e, struct xdrv_info, ddrv_pdev)
-
 static inline void xdrv_evtchnl_flush(
 		struct xdrv_evtchnl_info *channel);
 
@@ -176,22 +173,21 @@ int xendrm_front_mode_set(struct xendrm_du_crtc *du_crtc)
 	return 0;
 }
 
-int xendrm_front_dumb_create(struct platform_device *pdev,
+int xendrm_front_dumb_create(struct xdrv_info *drv_info,
 	struct drm_gem_object *gem_obj)
 {
 	return 0;
 }
 
-int xendrm_front_dumb_destroy(struct platform_device *pdev,
+int xendrm_front_dumb_destroy(struct xdrv_info *drv_info,
 	struct drm_gem_object *gem_obj)
 {
 	return 0;
 }
 
-int xendrm_front_fb_create(struct platform_device *pdev,
+int xendrm_front_fb_create(struct xdrv_info *drv_info,
 	struct drm_framebuffer *fb)
 {
-	struct xdrv_info *drv_info = to_xendrm_xdrv_info(&pdev);
 	struct xdrv_evtchnl_info *evtchnl;
 	struct xendrm_req *req;
 	unsigned long flags;
@@ -212,9 +208,8 @@ int xendrm_front_fb_create(struct platform_device *pdev,
 	return ret;
 }
 
-int xendrm_front_fb_destroy(struct platform_device *pdev, int fb_id)
+int xendrm_front_fb_destroy(struct xdrv_info *drv_info, int fb_id)
 {
-	struct xdrv_info *drv_info = to_xendrm_xdrv_info(&pdev);
 	struct xdrv_evtchnl_info *evtchnl;
 	struct xendrm_req *req;
 	unsigned long flags;
@@ -232,21 +227,24 @@ int xendrm_front_fb_destroy(struct platform_device *pdev, int fb_id)
 	return ret;
 }
 
-int xendrm_front_page_flip(struct platform_device *pdev, int crtc_id, int fb_id)
+int xendrm_front_page_flip(struct xdrv_info *drv_info, int crtc_id, int fb_id)
 {
-	struct xdrv_info *xdrv_info = to_xendrm_xdrv_info(&pdev);
 	struct xdrv_evtchnl_info *evtchnl;
 	struct xendrm_req *req;
 	unsigned long flags;
+	int ret;
 
-	if (unlikely(crtc_id >= xdrv_info->num_evt_pairs))
+	if (unlikely(crtc_id >= drv_info->num_evt_pairs))
 		return -EINVAL;
-	evtchnl = &xdrv_info->evt_pairs[crtc_id].ctrl;
-	spin_lock_irqsave(&xdrv_info->io_lock, flags);
+	evtchnl = &drv_info->evt_pairs[crtc_id].ctrl;
+	mutex_lock(&drv_info->io_generic_evt_lock);
+	spin_lock_irqsave(&drv_info->io_lock, flags);
 	req = ddrv_be_prepare_req(evtchnl, XENDRM_OP_PG_FLIP);
 	req->u.data.op.pg_flip.crtc_id = crtc_id;
 	req->u.data.op.pg_flip.fb_id = fb_id;
-	return ddrv_be_stream_do_io(evtchnl, req, flags);
+	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
+	mutex_unlock(&drv_info->io_generic_evt_lock);
+	return ret;
 }
 
 static struct xendrm_front_funcs xendrm_front_funcs = {
@@ -297,7 +295,6 @@ static void ddrv_cleanup(struct xdrv_info *drv_info)
 static int ddrv_init(struct xdrv_info *drv_info)
 {
 	struct xendrm_plat_data *platdata;
-	struct platform_device_info platform_info;
 	int ret;
 
 	ret = platform_driver_register(&ddrv_info);
@@ -306,10 +303,9 @@ static int ddrv_init(struct xdrv_info *drv_info)
 	drv_info->ddrv_registered = true;
 	platdata = &drv_info->cfg_plat_data;
 	/* pass card configuration via platform data */
-	platform_info = ddrv_platform_info;
-	platform_info.data = platdata;
-	platform_info.size_data = sizeof(struct xendrm_plat_data);
-	drv_info->ddrv_pdev = platform_device_register_full(&platform_info);
+	ddrv_platform_info.data = platdata;
+	ddrv_platform_info.size_data = sizeof(struct xendrm_plat_data);
+	drv_info->ddrv_pdev = platform_device_register_full(&ddrv_platform_info);
 	if (IS_ERR(drv_info->ddrv_pdev)) {
 		drv_info->ddrv_pdev = NULL;
 		goto fail;

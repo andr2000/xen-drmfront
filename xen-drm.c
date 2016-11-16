@@ -15,6 +15,7 @@
  */
 
 #include <drm/drmP.h>
+#include <drm/drm_fb_cma_helper.h>
 #include <drm/drm_gem_cma_helper.h>
 
 #include "xen-drm.h"
@@ -22,25 +23,24 @@
 #include "xen-drm-kms.h"
 #include "xen-drm-logs.h"
 
-void xendrm_preclose(struct drm_device *dev, struct drm_file *file)
-{
-}
-
-void xendrm_postclose(struct drm_device *dev, struct drm_file *file)
-{
-}
-
-void xendrm_lastclose(struct drm_device *dev)
-{
-}
-
 int xendrm_enable_vblank(struct drm_device *dev, unsigned int pipe)
 {
+	struct xendrm_du_device *xendrm_du = dev->dev_private;
+
+	if (unlikely(pipe >= xendrm_du->num_crtcs)) {
+		return -EINVAL;
+	}
+	xendrm_du_crtc_enable_vblank(&xendrm_du->crtcs[pipe], true);
 	return 0;
 }
 
 void xendrm_disable_vblank(struct drm_device *dev, unsigned int pipe)
 {
+	struct xendrm_du_device *xendrm_du = dev->dev_private;
+
+	if (unlikely(pipe >= xendrm_du->num_crtcs))
+		return;
+	xendrm_du_crtc_enable_vblank(&xendrm_du->crtcs[pipe], false);
 }
 
 static int xendrm_dumb_create(struct drm_file *file_priv, struct drm_device *dev,
@@ -49,6 +49,7 @@ static int xendrm_dumb_create(struct drm_file *file_priv, struct drm_device *dev
 	struct drm_gem_object *gem_obj;
 	int ret;
 
+	DRM_ERROR("%s\n", __FUNCTION__);
 	ret = drm_gem_cma_dumb_create(file_priv, dev, args);
 	if (ret)
 		goto fail;
@@ -58,7 +59,7 @@ static int xendrm_dumb_create(struct drm_file *file_priv, struct drm_device *dev
 		goto fail;
 	}
 	drm_gem_object_unreference_unlocked(gem_obj);
-	DRM_DEBUG("%s width %d height %d bpp %d pitch %d flags %d size %llu\n",
+	DRM_ERROR("%s width %d height %d bpp %d pitch %d flags %d size %llu\n",
 		__FUNCTION__, args->width, args->height, args->bpp,
 		args->pitch, args->flags, args->size);
 	return 0;
@@ -69,6 +70,7 @@ fail:
 static int xendrm_dumb_destroy(struct drm_file *file,
 	struct drm_device *dev, uint32_t handle)
 {
+	DRM_ERROR("%s\n", __FUNCTION__);
 	return drm_gem_dumb_destroy(file, dev, handle);
 }
 
@@ -94,11 +96,10 @@ static const struct file_operations xendrm_fops = {
 static struct drm_driver xendrm_driver = {
 	.driver_features           = DRIVER_GEM | DRIVER_MODESET |
 	                             DRIVER_PRIME | DRIVER_ATOMIC,
-	.preclose                  = xendrm_preclose,
-	.lastclose                 = xendrm_lastclose,
 	.get_vblank_counter        = drm_vblank_count,
 	.enable_vblank             = xendrm_enable_vblank,
 	.disable_vblank            = xendrm_disable_vblank,
+	.get_vblank_counter        = drm_vblank_no_hw_counter,
 	.gem_free_object           = xendrm_gem_free_object,
 	.gem_vm_ops                = &drm_gem_cma_vm_ops,
 	.prime_handle_to_fd        = drm_gem_prime_handle_to_fd,
@@ -138,13 +139,13 @@ int xendrm_probe(struct platform_device *pdev,
 
 	xendrm_du->front_funcs = xendrm_front_funcs;
 	xendrm_du->front_funcs->on_page_flip = xendrm_on_page_flip;
-	xendrm_du->pdev = pdev;
+	xendrm_du->xdrv_info = platdata->xdrv_info;
 
 	ddev = drm_dev_alloc(&xendrm_driver, &pdev->dev);
 	if (!ddev)
 		return -ENOMEM;
 
-	xendrm_du->drm_dev = ddev;
+	xendrm_du->ddev = ddev;
 	/*
 	 * FIXME: assume 1 CRTC and 1 Encoder per each connector
 	 */
@@ -186,7 +187,7 @@ fail:
 int xendrm_remove(struct platform_device *pdev)
 {
 	struct xendrm_du_device *xendrm_du = platform_get_drvdata(pdev);
-	struct drm_device *drm_dev = xendrm_du->drm_dev;
+	struct drm_device *drm_dev = xendrm_du->ddev;
 
 	drm_dev_unregister(drm_dev);
 	xendrm_du_modeset_cleanup(xendrm_du);
@@ -198,8 +199,9 @@ int xendrm_remove(struct platform_device *pdev)
 void xendrm_on_page_flip(struct platform_device *pdev, int crtc_id)
 {
 	struct xendrm_du_device *xendrm_du = platform_get_drvdata(pdev);
+
 	if (unlikely(crtc_id >= xendrm_du->num_crtcs))
 		return;
-	xendrm_crtc_on_page_flip(&xendrm_du->crtcs[crtc_id]);
+	xendrm_du_crtc_on_page_flip(&xendrm_du->crtcs[crtc_id]);
 }
 

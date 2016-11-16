@@ -20,6 +20,8 @@
 #include <drm/drmP.h>
 #include <drm/drm_crtc.h>
 
+#include <linux/wait.h>
+
 struct xendrm_du_device;
 struct xendrm_cfg_connector;
 
@@ -36,10 +38,16 @@ struct xendrm_du_crtc {
 	struct drm_crtc crtc;
 	struct drm_encoder encoder;
 	struct xendrm_du_connector connector;
-	struct drm_fbdev_cma *fbdev;
 	struct {
 		struct drm_property *alpha;
 	} props;
+	bool enabled;
+	/* vblank and flip handling */
+	wait_queue_head_t flip_wait;
+	struct drm_pending_vblank_event *event;
+	struct timer_list timer_vblank;
+	spinlock_t timer_lock;
+	unsigned long timer_period;
 };
 
 int xendrm_du_crtc_create(struct xendrm_du_device *xendrm_du,
@@ -49,6 +57,7 @@ int xendrm_du_encoder_create(struct xendrm_du_device *xendrm_du,
 int xendrm_du_connector_create(struct xendrm_du_device *xendrm_du,
 	struct xendrm_du_crtc *du_crtc, struct xendrm_cfg_connector *cfg);
 
-void xendrm_crtc_on_page_flip(struct xendrm_du_crtc *du_crtc);
+void xendrm_du_crtc_on_page_flip(struct xendrm_du_crtc *du_crtc);
+void xendrm_du_crtc_enable_vblank(struct xendrm_du_crtc *du_crtc, bool enable);
 
 #endif /* __XEN_DRM_CRTC_H_ */
