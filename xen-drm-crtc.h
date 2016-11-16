@@ -31,6 +31,7 @@ struct xendrm_du_connector {
 
 struct xendrm_du_crtc {
 	int index;
+	struct xendrm_du_device *xendrm_du;
 	struct drm_plane primary;
 	struct drm_crtc crtc;
 	struct drm_encoder encoder;

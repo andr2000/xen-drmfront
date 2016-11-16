@@ -149,7 +149,7 @@ int xendrm_front_fb_destroy(struct drm_framebuffer *fb)
 }
 
 
-int xendrm_front_page_flip(struct drm_framebuffer *fb)
+int xendrm_front_page_flip(int crtc_id, int fb_id)
 {
 	return 0;
 }

@@ -21,6 +21,14 @@
 #include <video/videomode.h>
 
 #include "xen-drm.h"
+#include "xen-drm-front.h"
+
+#define to_xendrm_connector(e) \
+	container_of(e, struct xendrm_du_connector, base)
+
+#define to_xendrm_crtc(e) \
+	container_of(e, struct xendrm_du_crtc, crtc)
+
 
 static const struct drm_encoder_funcs xendrm_drm_encoder_funcs = {
 	.destroy = drm_encoder_cleanup,
@@ -62,9 +70,6 @@ static const struct videomode xendrm_def_videomode = {
 	.vsync_len = 0,
 	.flags = 0,
 };
-
-#define to_xendrm_connector(e) \
-	container_of(e, struct xendrm_du_connector, base)
 
 static int xendrm_du_drm_connector_get_modes(struct drm_connector *connector)
 {
@@ -254,7 +259,14 @@ static int xendrm_crtc_page_flip(struct drm_crtc *crtc,
 	struct drm_framebuffer *fb, struct drm_pending_vblank_event *event,
 	uint32_t flags)
 {
-	return drm_atomic_helper_page_flip(crtc, fb, event, flags);
+	struct xendrm_du_crtc *du_crtc = to_xendrm_crtc(crtc);
+	int ret;
+
+	ret = drm_atomic_helper_page_flip(crtc, fb, event, flags);
+	if (ret < 0)
+		return ret;
+	return du_crtc->xendrm_du->front_funcs->page_flip(du_crtc->index,
+		fb->base.id);
 }
 
 void xendrm_crtc_on_page_flip(struct xendrm_du_crtc *du_crtc)
@@ -277,6 +289,7 @@ int xendrm_du_crtc_create(struct xendrm_du_device *xendrm_du,
 	struct drm_plane *primary;
 	int ret;
 
+	du_crtc->xendrm_du = xendrm_du;
 	du_crtc->index = index;
 	ret = xendrm_du_crtc_props_init(xendrm_du, du_crtc);
 	if (ret < 0)
