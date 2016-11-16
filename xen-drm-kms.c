@@ -40,9 +40,18 @@ static struct drm_framebuffer *
 xendrm_du_fb_create(struct drm_device *dev, struct drm_file *file_priv,
 	const struct drm_mode_fb_cmd2 *mode_cmd)
 {
-	DRM_ERROR("%s\n", __FUNCTION__);
-	return drm_fb_cma_create_with_funcs(dev, file_priv,
+	struct xendrm_du_device *xendrm_du = to_xendrm_du_device(&dev);
+	static struct drm_framebuffer *fb;
+
+	fb = drm_fb_cma_create_with_funcs(dev, file_priv,
 		mode_cmd, &xendr_du_fb_funcs);
+	if (IS_ERR_OR_NULL(fb)) {
+		if (xendrm_du->front_funcs->fb_create(xendrm_du->pdev, fb) < 0) {
+			drm_fb_cma_destroy(fb);
+			fb = NULL;
+		}
+	}
+	return fb;
 }
 
 static void xendrm_du_output_poll_changed(struct drm_device *dev)

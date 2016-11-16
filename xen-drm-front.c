@@ -193,7 +193,25 @@ int xendrm_front_dumb_destroy(struct platform_device *pdev,
 int xendrm_front_fb_create(struct platform_device *pdev,
 	struct drm_framebuffer *fb)
 {
-	return 0;
+	struct xdrv_info *drv_info = to_xendrm_xdrv_info(&pdev);
+	struct xdrv_evtchnl_info *evtchnl;
+	struct xendrm_req *req;
+	unsigned long flags;
+	int ret;
+
+	evtchnl = &drv_info->evt_pairs[GENERIC_OP_EVT_CHNL].ctrl;
+	if (unlikely(!evtchnl))
+		return -EIO;
+	mutex_lock(&drv_info->io_generic_evt_lock);
+	spin_lock_irqsave(&drv_info->io_lock, flags);
+	req = ddrv_be_prepare_req(evtchnl, XENDRM_OP_FB_CREATE);
+	req->u.data.op.fb_create.fb_id = fb->base.id;
+	req->u.data.op.fb_create.width = fb->width;
+	req->u.data.op.fb_create.height = fb->height;
+	req->u.data.op.fb_create.pixel_format = fb->pixel_format;
+	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
+	mutex_unlock(&drv_info->io_generic_evt_lock);
+	return ret;
 }
 
 
