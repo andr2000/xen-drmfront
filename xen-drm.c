@@ -65,6 +65,12 @@ fail:
 	return ret;
 }
 
+static int xendrm_dumb_destroy(struct drm_file *file,
+	struct drm_device *dev, uint32_t handle)
+{
+	return drm_gem_dumb_destroy(file, dev, handle);
+}
+
 void xendrm_gem_free_object(struct drm_gem_object *obj)
 {
 	drm_gem_cma_free_object(obj);
@@ -105,7 +111,7 @@ static struct drm_driver xendrm_driver = {
 	.gem_prime_mmap            = drm_gem_cma_prime_mmap,
 	.dumb_create               = xendrm_dumb_create,
 	.dumb_map_offset           = drm_gem_cma_dumb_map_offset,
-	.dumb_destroy              = drm_gem_dumb_destroy,
+	.dumb_destroy              = xendrm_dumb_destroy,
 	.fops                      = &xendrm_fops,
 	.name                      = "xendrm-du",
 	.desc                      = "Xen PV DRM Display Unit",

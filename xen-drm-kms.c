@@ -23,12 +23,22 @@
 #include "xen-drm.h"
 #include "xen-drm-kms.h"
 
+void xendrm_du_fb_destroy(struct drm_framebuffer *fb)
+{
+	return drm_fb_cma_destroy(fb);
+}
+
+static struct drm_framebuffer_funcs xendr_du_fb_funcs = {
+	.destroy = xendrm_du_fb_destroy,
+};
+
 static struct drm_framebuffer *
 xendrm_du_fb_create(struct drm_device *dev, struct drm_file *file_priv,
 	const struct drm_mode_fb_cmd2 *mode_cmd)
 {
 	DRM_ERROR("%s\n", __FUNCTION__);
-	return drm_fb_cma_create(dev, file_priv, mode_cmd);;
+	return drm_fb_cma_create_with_funcs(dev, file_priv,
+		mode_cmd, &xendr_du_fb_funcs);
 }
 
 static void xendrm_du_output_poll_changed(struct drm_device *dev)
