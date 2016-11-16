@@ -18,6 +18,7 @@
 #include <drm/drm_gem_cma_helper.h>
 
 #include "xen-drm.h"
+#include "xen-drm-front.h"
 #include "xen-drm-kms.h"
 #include "xen-drm-logs.h"
 
@@ -120,7 +121,8 @@ static struct drm_driver xendrm_driver = {
 	.minor                     = 0,
 };
 
-int xendrm_probe(struct platform_device *pdev)
+int xendrm_probe(struct platform_device *pdev,
+	struct xendrm_front_funcs *xendrm_front_funcs)
 {
 	struct xendrm_plat_data *platdata;
 	struct xendrm_du_device *xendrm_du;
@@ -134,6 +136,8 @@ int xendrm_probe(struct platform_device *pdev)
 	if (!xendrm_du)
 		return -ENOMEM;
 
+	xendrm_du->front_funcs = xendrm_front_funcs;
+	xendrm_du->front_funcs->on_page_flip = xendrm_crtc_on_page_flip;
 	xendrm_du->dev = &pdev->dev;
 
 	ddev = drm_dev_alloc(&xendrm_driver, &pdev->dev);

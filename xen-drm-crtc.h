@@ -41,6 +41,8 @@ struct xendrm_du_crtc {
 	} props;
 };
 
+void xendrm_crtc_on_page_flip(int fb_id);
+
 int xendrm_du_crtc_create(struct xendrm_du_device *xendrm_du,
 	struct xendrm_du_crtc *du_crtc, unsigned int index);
 int xendrm_du_encoder_create(struct xendrm_du_device *xendrm_du,

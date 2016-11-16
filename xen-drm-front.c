@@ -34,6 +34,7 @@
 #include <xen/interface/io/drmif_linux.h>
 
 #include "xen-drm.h"
+#include "xen-drm-front.h"
 #include "xen-drm-logs.h"
 
 #define GRANT_INVALID_REF	0
@@ -119,9 +120,52 @@ static int drmif_to_kern_error(int drmif_err)
 	return -EIO;
 }
 
+int xendrm_front_mode_set(struct xendrm_du_crtc *du_crtc)
+{
+	return 0;
+}
+
+int xendrm_front_dumb_create(struct drm_gem_object *gem_obj)
+{
+	return 0;
+}
+
+
+int xendrm_front_dumb_destroy(struct drm_gem_object *gem_obj)
+{
+	return 0;
+}
+
+
+int xendrm_front_fb_create(struct drm_framebuffer *fb)
+{
+	return 0;
+}
+
+
+int xendrm_front_fb_destroy(struct drm_framebuffer *fb)
+{
+	return 0;
+}
+
+
+int xendrm_front_page_flip(struct drm_framebuffer *fb)
+{
+	return 0;
+}
+
+static struct xendrm_front_funcs xendrm_front_funcs = {
+	.mode_set = xendrm_front_mode_set,
+	.dumb_create = xendrm_front_dumb_create,
+	.dumb_destroy = xendrm_front_dumb_destroy,
+	.fb_create = xendrm_front_fb_create,
+	.fb_destroy = xendrm_front_fb_destroy,
+	.page_flip = xendrm_front_page_flip,
+};
+
 static int ddrv_probe(struct platform_device *pdev)
 {
-	return xendrm_probe(pdev);
+	return xendrm_probe(pdev, &xendrm_front_funcs);
 }
 
 static int ddrv_remove(struct platform_device *pdev)
