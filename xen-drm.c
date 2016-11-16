@@ -36,11 +36,24 @@ void xendrm_lastclose(struct drm_device *dev)
 
 int xendrm_enable_vblank(struct drm_device *dev, unsigned int pipe)
 {
+	struct xendrm_du_device *xendrm_du = to_xendrm_du_device(&dev);
+
+	if (unlikely(pipe >= xendrm_du->num_crtcs)) {
+		DRM_ERROR("%s pipe %d xendrm_du->num_crtcs %d",
+			pipe, xendrm_du->num_crtcs);
+		return -EINVAL;
+	}
+	xendrm_du_crtc_enable_vblank(&xendrm_du->crtcs[pipe], true);
 	return 0;
 }
 
 void xendrm_disable_vblank(struct drm_device *dev, unsigned int pipe)
 {
+	struct xendrm_du_device *xendrm_du = to_xendrm_du_device(&dev);
+
+	if (unlikely(pipe >= xendrm_du->num_crtcs))
+		return;
+	xendrm_du_crtc_enable_vblank(&xendrm_du->crtcs[pipe], false);
 }
 
 static int xendrm_dumb_create(struct drm_file *file_priv, struct drm_device *dev,
@@ -49,6 +62,7 @@ static int xendrm_dumb_create(struct drm_file *file_priv, struct drm_device *dev
 	struct drm_gem_object *gem_obj;
 	int ret;
 
+	DRM_ERROR("%s\n", __FUNCTION__);
 	ret = drm_gem_cma_dumb_create(file_priv, dev, args);
 	if (ret)
 		goto fail;
@@ -58,7 +72,7 @@ static int xendrm_dumb_create(struct drm_file *file_priv, struct drm_device *dev
 		goto fail;
 	}
 	drm_gem_object_unreference_unlocked(gem_obj);
-	DRM_DEBUG("%s width %d height %d bpp %d pitch %d flags %d size %llu\n",
+	DRM_ERROR("%s width %d height %d bpp %d pitch %d flags %d size %llu\n",
 		__FUNCTION__, args->width, args->height, args->bpp,
 		args->pitch, args->flags, args->size);
 	return 0;
@@ -69,6 +83,7 @@ fail:
 static int xendrm_dumb_destroy(struct drm_file *file,
 	struct drm_device *dev, uint32_t handle)
 {
+	DRM_ERROR("%s\n", __FUNCTION__);
 	return drm_gem_dumb_destroy(file, dev, handle);
 }
 
@@ -200,6 +215,6 @@ void xendrm_on_page_flip(struct platform_device *pdev, int crtc_id)
 	struct xendrm_du_device *xendrm_du = platform_get_drvdata(pdev);
 	if (unlikely(crtc_id >= xendrm_du->num_crtcs))
 		return;
-	xendrm_crtc_on_page_flip(&xendrm_du->crtcs[crtc_id]);
+	xendrm_du_crtc_on_page_flip(&xendrm_du->crtcs[crtc_id]);
 }
 
