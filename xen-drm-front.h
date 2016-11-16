@@ -17,6 +17,7 @@
 #ifndef __XEN_DRM_FRONT_H_
 #define __XEN_DRM_FRONT_H_
 
+struct platform_device;
 struct xendrm_du_crtc;
 struct drm_gem_object;
 struct drm_framebuffer;
@@ -28,7 +29,8 @@ struct xendrm_front_funcs {
 	int (*fb_create)(struct drm_framebuffer *fb);
 	int (*fb_destroy)(struct drm_framebuffer *fb);
 	int (*page_flip)(struct drm_framebuffer *fb);
-	void (*on_page_flip)(int fb_id);
+	/* CAUTION! this is called with a spin_lock held! */
+	void (*on_page_flip)(struct platform_device *pdev, int fb_id);
 };
 
 #endif /* __XEN_DRM_FRONT_H_ */

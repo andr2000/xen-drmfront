@@ -257,8 +257,9 @@ static int xendrm_crtc_page_flip(struct drm_crtc *crtc,
 	return drm_atomic_helper_page_flip(crtc, fb, event, flags);
 }
 
-void xendrm_crtc_on_page_flip(int fb_id)
+void xendrm_crtc_on_page_flip(struct xendrm_du_crtc *du_crtc)
 {
+	drm_crtc_handle_vblank(&du_crtc->crtc);
 }
 
 static const struct drm_crtc_funcs xendrm_du_drm_crtc_funcs = {

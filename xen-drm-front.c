@@ -300,6 +300,11 @@ static irqreturn_t xdrv_evtchnl_interrupt_evt(int irq, void *dev_id)
 		event = &XENDRM_IN_RING_REF(page, cons);
 		switch (event->u.data.type) {
 		case XENDRM_EVT_PG_FLIP:
+			if (likely(xendrm_front_funcs.on_page_flip)) {
+				xendrm_front_funcs.on_page_flip(
+					drv_info->ddrv_dev,
+					event->u.data.op.pg_flip.crtc_id);
+			}
 			break;
 		}
 	}

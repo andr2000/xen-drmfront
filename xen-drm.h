@@ -58,6 +58,7 @@ struct xendrm_plat_data {
 int xendrm_probe(struct platform_device *pdev,
 	struct xendrm_front_funcs *xendrm_front_funcs);
 int xendrm_remove(struct platform_device *pdev);
+void xendrm_on_page_flip(struct platform_device *pdev, int crtc_id);
 
 #endif /* __XEN_DRM_H*/
 

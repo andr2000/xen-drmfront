@@ -41,13 +41,13 @@ struct xendrm_du_crtc {
 	} props;
 };
 
-void xendrm_crtc_on_page_flip(int fb_id);
-
 int xendrm_du_crtc_create(struct xendrm_du_device *xendrm_du,
 	struct xendrm_du_crtc *du_crtc, unsigned int index);
 int xendrm_du_encoder_create(struct xendrm_du_device *xendrm_du,
 	struct xendrm_du_crtc *du_crtc);
 int xendrm_du_connector_create(struct xendrm_du_device *xendrm_du,
 	struct xendrm_du_crtc *du_crtc, struct xendrm_cfg_connector *cfg);
+
+void xendrm_crtc_on_page_flip(struct xendrm_du_crtc *du_crtc);
 
 #endif /* __XEN_DRM_CRTC_H_ */

@@ -137,7 +137,7 @@ int xendrm_probe(struct platform_device *pdev,
 		return -ENOMEM;
 
 	xendrm_du->front_funcs = xendrm_front_funcs;
-	xendrm_du->front_funcs->on_page_flip = xendrm_crtc_on_page_flip;
+	xendrm_du->front_funcs->on_page_flip = xendrm_on_page_flip;
 	xendrm_du->dev = &pdev->dev;
 
 	ddev = drm_dev_alloc(&xendrm_driver, &pdev->dev);
@@ -194,3 +194,12 @@ int xendrm_remove(struct platform_device *pdev)
 	drm_dev_unref(drm_dev);
 	return 0;
 }
+
+void xendrm_on_page_flip(struct platform_device *pdev, int crtc_id)
+{
+	struct xendrm_du_device *xendrm_du = platform_get_drvdata(pdev);
+	if (unlikely(crtc_id >= xendrm_du->num_crtcs))
+		return;
+	xendrm_crtc_on_page_flip(&xendrm_du->crtcs[crtc_id]);
+}
+
