@@ -96,6 +96,7 @@ struct xdrv_evtchnl_pair_info {
 struct xdrv_info {
 	struct xenbus_device *xb_dev;
 	spinlock_t io_lock;
+	struct mutex io_generic_evt_lock;
 	struct mutex mutex;
 	bool ddrv_registered;
 	/* virtual DRM platform device */
@@ -202,14 +203,18 @@ int xendrm_front_fb_destroy(struct platform_device *pdev, int fb_id)
 	struct xdrv_evtchnl_info *evtchnl;
 	struct xendrm_req *req;
 	unsigned long flags;
+	int ret;
 
 	evtchnl = &xdrv_info->evt_pairs[GENERIC_OP_EVT_CHNL].ctrl;
 	if (unlikely(!evtchnl))
 		return -EIO;
+	mutex_lock(&xdrv_info->io_generic_evt_lock);
 	spin_lock_irqsave(&xdrv_info->io_lock, flags);
 	req = ddrv_be_prepare_req(evtchnl, XENDRM_OP_FB_DESTROY);
 	req->u.data.op.fb_destroy.fb_id = fb_id;
-	return ddrv_be_stream_do_io(evtchnl, req, flags);
+	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
+	mutex_unlock(&xdrv_info->io_generic_evt_lock);
+	return ret;
 }
 
 
@@ -704,6 +709,7 @@ static int xdrv_probe(struct xenbus_device *xb_dev,
 	drv_info->xb_dev = xb_dev;
 	spin_lock_init(&drv_info->io_lock);
 	mutex_init(&drv_info->mutex);
+	mutex_init(&drv_info->io_generic_evt_lock);
 	drv_info->ddrv_registered = false;
 	dev_set_drvdata(&xb_dev->dev, drv_info);
 	return 0;
