@@ -250,11 +250,18 @@ static const struct drm_crtc_helper_funcs xendrm_du_drm_crtc_helper_funcs = {
 	.mode_set_nofb = xendrm_du_crtc_mode_set_nofb,
 };
 
+static int xendrm_crtc_page_flip(struct drm_crtc *crtc,
+	struct drm_framebuffer *fb, struct drm_pending_vblank_event *event,
+	uint32_t flags)
+{
+	return drm_atomic_helper_page_flip(crtc, fb, event, flags);
+}
+
 static const struct drm_crtc_funcs xendrm_du_drm_crtc_funcs = {
 	.atomic_duplicate_state = drm_atomic_helper_crtc_duplicate_state,
 	.atomic_destroy_state = drm_atomic_helper_crtc_destroy_state,
 	.destroy = drm_crtc_cleanup,
-	.page_flip = drm_atomic_helper_page_flip,
+	.page_flip = xendrm_crtc_page_flip,
 	.reset = drm_atomic_helper_crtc_reset,
 	.set_config = drm_atomic_helper_set_config,
 };
