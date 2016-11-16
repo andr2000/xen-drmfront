@@ -92,7 +92,7 @@ struct xdrv_info {
 	spinlock_t io_lock;
 	struct mutex mutex;
 	bool ddrv_registered;
-	/* virtual DRM platform devices */
+	/* virtual DRM platform device */
 	struct platform_device *ddrv_dev;
 
 	int num_evt_pairs;
