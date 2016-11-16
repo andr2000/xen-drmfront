@@ -182,13 +182,11 @@ int xendrm_front_dumb_create(struct platform_device *pdev,
 	return 0;
 }
 
-
 int xendrm_front_dumb_destroy(struct platform_device *pdev,
 	struct drm_gem_object *gem_obj)
 {
 	return 0;
 }
-
 
 int xendrm_front_fb_create(struct platform_device *pdev,
 	struct drm_framebuffer *fb)
@@ -214,7 +212,6 @@ int xendrm_front_fb_create(struct platform_device *pdev,
 	return ret;
 }
 
-
 int xendrm_front_fb_destroy(struct platform_device *pdev, int fb_id)
 {
 	struct xdrv_info *drv_info = to_xendrm_xdrv_info(&pdev);
@@ -234,7 +231,6 @@ int xendrm_front_fb_destroy(struct platform_device *pdev, int fb_id)
 	mutex_unlock(&drv_info->io_generic_evt_lock);
 	return ret;
 }
-
 
 int xendrm_front_page_flip(struct platform_device *pdev, int crtc_id, int fb_id)
 {
