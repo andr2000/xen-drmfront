@@ -29,7 +29,7 @@ struct xendrm_front_funcs;
 
 struct xendrm_du_device {
 	struct xendrm_front_funcs *front_funcs;
-	struct device *dev;
+	struct platform_device *pdev;
 	struct drm_device *drm_dev;
 	int num_crtcs;
 	struct xendrm_plat_data *platdata;

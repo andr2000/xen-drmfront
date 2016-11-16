@@ -67,6 +67,7 @@ struct xdrv_evtchnl_info {
 			/* latest response status and id */
 			int resp_status;
 			uint16_t resp_id;
+			uint16_t req_next_id;
 		} ctrl;
 		struct {
 			struct xendrm_event_page *page;
@@ -93,7 +94,7 @@ struct xdrv_info {
 	struct mutex mutex;
 	bool ddrv_registered;
 	/* virtual DRM platform device */
-	struct platform_device *ddrv_dev;
+	struct platform_device *ddrv_pdev;
 
 	int num_evt_pairs;
 	struct xdrv_evtchnl_pair_info *evt_pairs;
@@ -120,8 +121,24 @@ static int drmif_to_kern_error(int drmif_err)
 	return -EIO;
 }
 
+#define to_xendrm_xdrv_info(e) \
+	container_of(e, struct xdrv_info, ddrv_pdev)
+
 static inline void xdrv_evtchnl_flush(
 		struct xdrv_evtchnl_info *channel);
+
+static inline struct xendrm_req *ddrv_be_prepare_req(
+	struct xdrv_evtchnl_info *evtchnl, uint8_t operation)
+{
+	struct xendrm_req *req;
+
+	req = RING_GET_REQUEST(&evtchnl->u.ctrl.ring,
+		evtchnl->u.ctrl.ring.req_prod_pvt);
+	req->u.data.operation = operation;
+	req->u.data.id = evtchnl->u.ctrl.req_next_id++;
+	evtchnl->u.ctrl.resp_id = req->u.data.id;
+	return req;
+}
 
 /* CAUTION!!! Call this with the spin lock held.
  * This function will release it
@@ -153,33 +170,49 @@ int xendrm_front_mode_set(struct xendrm_du_crtc *du_crtc)
 	return 0;
 }
 
-int xendrm_front_dumb_create(struct drm_gem_object *gem_obj)
+int xendrm_front_dumb_create(struct platform_device *pdev,
+	struct drm_gem_object *gem_obj)
 {
 	return 0;
 }
 
 
-int xendrm_front_dumb_destroy(struct drm_gem_object *gem_obj)
+int xendrm_front_dumb_destroy(struct platform_device *pdev,
+	struct drm_gem_object *gem_obj)
 {
 	return 0;
 }
 
 
-int xendrm_front_fb_create(struct drm_framebuffer *fb)
+int xendrm_front_fb_create(struct platform_device *pdev,
+	struct drm_framebuffer *fb)
 {
 	return 0;
 }
 
 
-int xendrm_front_fb_destroy(struct drm_framebuffer *fb)
+int xendrm_front_fb_destroy(struct platform_device *pdev,
+	struct drm_framebuffer *fb)
 {
 	return 0;
 }
 
 
-int xendrm_front_page_flip(int crtc_id, int fb_id)
+int xendrm_front_page_flip(struct platform_device *pdev, int crtc_id, int fb_id)
 {
-	return 0;
+	struct xdrv_info *xdrv_info = to_xendrm_xdrv_info(&pdev);
+	struct xdrv_evtchnl_info *evtchnl;
+	struct xendrm_req *req;
+	unsigned long flags;
+
+	if (unlikely(crtc_id >= xdrv_info->num_evt_pairs))
+		return -EINVAL;
+	evtchnl = &xdrv_info->evt_pairs[crtc_id].ctrl;
+	spin_lock_irqsave(&xdrv_info->io_lock, flags);
+	req = ddrv_be_prepare_req(evtchnl, XENDRM_OP_PG_FLIP);
+	req->u.data.op.pg_flip.crtc_id = crtc_id;
+	req->u.data.op.pg_flip.fb_id = fb_id;
+	return ddrv_be_stream_do_io(evtchnl, req, flags);
 }
 
 static struct xendrm_front_funcs xendrm_front_funcs = {
@@ -220,11 +253,11 @@ static void ddrv_cleanup(struct xdrv_info *drv_info)
 {
 	if (!drv_info->ddrv_registered)
 		return;
-	if (drv_info->ddrv_dev)
-		platform_device_unregister(drv_info->ddrv_dev);
+	if (drv_info->ddrv_pdev)
+		platform_device_unregister(drv_info->ddrv_pdev);
 	platform_driver_unregister(&ddrv_info);
 	drv_info->ddrv_registered = false;
-	drv_info->ddrv_dev = NULL;
+	drv_info->ddrv_pdev = NULL;
 }
 
 static int ddrv_init(struct xdrv_info *drv_info)
@@ -242,9 +275,9 @@ static int ddrv_init(struct xdrv_info *drv_info)
 	platform_info = ddrv_platform_info;
 	platform_info.data = platdata;
 	platform_info.size_data = sizeof(struct xendrm_plat_data);
-	drv_info->ddrv_dev = platform_device_register_full(&platform_info);
-	if (IS_ERR(drv_info->ddrv_dev)) {
-		drv_info->ddrv_dev = NULL;
+	drv_info->ddrv_pdev = platform_device_register_full(&platform_info);
+	if (IS_ERR(drv_info->ddrv_pdev)) {
+		drv_info->ddrv_pdev = NULL;
 		goto fail;
 	}
 	return 0;
@@ -330,7 +363,7 @@ static irqreturn_t xdrv_evtchnl_interrupt_evt(int irq, void *dev_id)
 		case XENDRM_EVT_PG_FLIP:
 			if (likely(xendrm_front_funcs.on_page_flip)) {
 				xendrm_front_funcs.on_page_flip(
-					drv_info->ddrv_dev,
+					drv_info->ddrv_pdev,
 					event->u.data.op.pg_flip.crtc_id);
 			}
 			break;

@@ -260,13 +260,15 @@ static int xendrm_crtc_page_flip(struct drm_crtc *crtc,
 	uint32_t flags)
 {
 	struct xendrm_du_crtc *du_crtc = to_xendrm_crtc(crtc);
+	struct xendrm_du_device *xendrm_du;
 	int ret;
 
 	ret = drm_atomic_helper_page_flip(crtc, fb, event, flags);
 	if (ret < 0)
 		return ret;
-	return du_crtc->xendrm_du->front_funcs->page_flip(du_crtc->index,
-		fb->base.id);
+	xendrm_du = du_crtc->xendrm_du;
+	return xendrm_du->front_funcs->page_flip(
+		xendrm_du->pdev, du_crtc->index, fb->base.id);
 }
 
 void xendrm_crtc_on_page_flip(struct xendrm_du_crtc *du_crtc)

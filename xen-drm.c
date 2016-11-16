@@ -138,7 +138,7 @@ int xendrm_probe(struct platform_device *pdev,
 
 	xendrm_du->front_funcs = xendrm_front_funcs;
 	xendrm_du->front_funcs->on_page_flip = xendrm_on_page_flip;
-	xendrm_du->dev = &pdev->dev;
+	xendrm_du->pdev = pdev;
 
 	ddev = drm_dev_alloc(&xendrm_driver, &pdev->dev);
 	if (!ddev)
