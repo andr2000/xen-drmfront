@@ -244,15 +244,9 @@ static void xendrm_du_crtc_disable(struct drm_crtc *crtc)
 	DRM_DEBUG_KMS("%s\n", __FUNCTION__);
 }
 
-static void xendrm_du_crtc_mode_set_nofb(struct drm_crtc *crtc)
-{
-	DRM_DEBUG_KMS("%s\n", __FUNCTION__);
-}
-
 static const struct drm_crtc_helper_funcs xendrm_du_drm_crtc_helper_funcs = {
 	.enable = xendrm_du_crtc_enable,
 	.disable = xendrm_du_crtc_disable,
-	.mode_set_nofb = xendrm_du_crtc_mode_set_nofb,
 };
 
 static int xendrm_crtc_page_flip(struct drm_crtc *crtc,
@@ -276,13 +270,23 @@ void xendrm_crtc_on_page_flip(struct xendrm_du_crtc *du_crtc)
 	drm_crtc_handle_vblank(&du_crtc->crtc);
 }
 
+static int xendrm_crtc_set_config(struct drm_mode_set *set)
+{
+	int ret;
+
+	ret = drm_atomic_helper_set_config(set);
+	if (ret < 0)
+		return ret;
+	return 0;
+}
+
 static const struct drm_crtc_funcs xendrm_du_drm_crtc_funcs = {
 	.atomic_duplicate_state = drm_atomic_helper_crtc_duplicate_state,
 	.atomic_destroy_state = drm_atomic_helper_crtc_destroy_state,
 	.destroy = drm_crtc_cleanup,
 	.page_flip = xendrm_crtc_page_flip,
 	.reset = drm_atomic_helper_crtc_reset,
-	.set_config = drm_atomic_helper_set_config,
+	.set_config = xendrm_crtc_set_config,
 };
 
 int xendrm_du_crtc_create(struct xendrm_du_device *xendrm_du,
