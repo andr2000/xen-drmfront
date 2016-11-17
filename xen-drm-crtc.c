@@ -23,12 +23,17 @@
 #include "xen-drm.h"
 #include "xen-drm-front.h"
 
-#define to_xendrm_connector(e) \
-	container_of(e, struct xendrm_du_connector, base)
+static inline struct xendrm_du_connector *
+to_xendrm_connector(struct drm_connector *c)
+{
+	return container_of(c, struct xendrm_du_connector, base);
+}
 
-#define to_xendrm_crtc(e) \
-	container_of(e, struct xendrm_du_crtc, crtc)
-
+static inline struct xendrm_du_crtc *
+to_xendrm_crtc(struct drm_crtc *c)
+{
+	return container_of(c, struct xendrm_du_crtc, crtc);
+}
 
 static const struct drm_encoder_funcs xendrm_drm_encoder_funcs = {
 	.destroy = drm_encoder_cleanup,
@@ -43,7 +48,7 @@ int xendrm_du_encoder_create(struct xendrm_du_device *xendrm_du,
 	/* only this CRTC w/o any clones */
 	encoder->possible_crtcs = 1 << du_crtc->index;
 	encoder->possible_clones = 0;
-	ret = drm_encoder_init(xendrm_du->drm_dev, encoder,
+	ret = drm_encoder_init(xendrm_du->ddev, encoder,
 		&xendrm_drm_encoder_funcs, DRM_MODE_ENCODER_VIRTUAL, NULL);
 	if (ret < 0)
 		return ret;
@@ -129,13 +134,13 @@ int xendrm_du_connector_create(struct xendrm_du_device *xendrm_du,
 {
 	struct drm_encoder *encoder = &du_crtc->encoder;
 	struct drm_connector *connector = &du_crtc->connector.base;
-	struct drm_mode_config *mode_config = &xendrm_du->drm_dev->mode_config;
+	struct drm_mode_config *mode_config = &xendrm_du->ddev->mode_config;
 	int ret;
 
 	du_crtc->connector.width = cfg->width;
 	du_crtc->connector.height = cfg->height;
 	du_crtc->connector.xen_id = cfg->id;
-	ret = drm_connector_init(xendrm_du->drm_dev, connector,
+	ret = drm_connector_init(xendrm_du->ddev, connector,
 		&xendrm_du_drm_connector_funcs, DRM_MODE_CONNECTOR_VIRTUAL);
 	if (ret < 0)
 		return ret;
@@ -198,12 +203,12 @@ static const struct drm_plane_helper_funcs xendrm_du_plane_helper_funcs = {
 };
 
 static const struct drm_plane_funcs xendrm_du_crtc_drm_plane_funcs = {
+	.update_plane = drm_atomic_helper_update_plane,
+	.disable_plane = drm_atomic_helper_disable_plane,
+	.destroy = drm_plane_cleanup,
+	.reset = drm_atomic_helper_plane_reset,
 	.atomic_duplicate_state = drm_atomic_helper_plane_duplicate_state,
 	.atomic_destroy_state = drm_atomic_helper_plane_destroy_state,
-	.destroy = drm_plane_cleanup,
-	.disable_plane = drm_atomic_helper_disable_plane,
-	.reset = drm_atomic_helper_plane_reset,
-	.update_plane = drm_atomic_helper_update_plane,
 };
 
 static struct drm_plane *xendrm_du_crtc_create_primary(
@@ -212,7 +217,7 @@ static struct drm_plane *xendrm_du_crtc_create_primary(
 	struct drm_plane *primary = &du_crtc->primary;
 	int ret;
 
-	ret = drm_universal_plane_init(xendrm_du->drm_dev, primary, 0,
+	ret = drm_universal_plane_init(xendrm_du->ddev, primary, 0,
 		&xendrm_du_crtc_drm_plane_funcs,
 		xendrm_du_drm_plane_formats,
 		ARRAY_SIZE(xendrm_du_drm_plane_formats),
@@ -227,7 +232,7 @@ static struct drm_plane *xendrm_du_crtc_create_primary(
 static int xendrm_du_crtc_props_init(struct xendrm_du_device *xendrm_du,
 	struct xendrm_du_crtc *crtc)
 {
-	crtc->props.alpha = drm_property_create_range(xendrm_du->drm_dev,
+	crtc->props.alpha = drm_property_create_range(xendrm_du->ddev,
 		0, "alpha", 0, 255);
 	if (!crtc->props.alpha)
 		return -ENOMEM;
@@ -257,16 +262,7 @@ static void xendrm_du_crtc_timer_stop(struct xendrm_du_crtc *du_crtc)
 	spin_unlock_irqrestore(&du_crtc->timer_lock, flags);
 }
 
-static void xendrm_du_crtc_timer_callback(unsigned long data)
-{
-	struct xendrm_du_crtc *du_crtc = (struct xendrm_du_crtc *)data;
-	unsigned long flags;
-
-	spin_lock_irqsave(&du_crtc->timer_lock, flags);
-	xendrm_du_crtc_timer_rearm(du_crtc);
-	spin_unlock_irqrestore(&du_crtc->timer_lock, flags);
-	drm_crtc_handle_vblank(&du_crtc->crtc);
-}
+static void xendrm_du_crtc_timer_callback(unsigned long data);
 
 static void xendrm_du_crtc_timer_create(struct xendrm_du_crtc *du_crtc)
 {
@@ -275,9 +271,19 @@ static void xendrm_du_crtc_timer_create(struct xendrm_du_crtc *du_crtc)
 	spin_lock_init(&du_crtc->timer_lock);
 }
 
+static void xendrm_du_crtc_timer_set_period(struct xendrm_du_crtc *du_crtc,
+	unsigned long period)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&du_crtc->timer_lock, flags);
+	du_crtc->timer_period = period;
+	spin_unlock_irqrestore(&du_crtc->timer_lock, flags);
+}
+
 void xendrm_du_crtc_enable_vblank(struct xendrm_du_crtc *du_crtc, bool enable)
 {
-	DRM_DEBUG("%s\n", __FUNCTION__);
+	DRM_DEBUG("%s -> %s\n", __FUNCTION__, enable ? "true" : "false");
 	if (enable)
 		xendrm_du_crtc_timer_start(du_crtc);
 	else
@@ -304,10 +310,16 @@ static void xendrm_du_crtc_finish_page_flip(struct xendrm_du_crtc *du_crtc)
 
 	spin_lock_irqsave(&dev->event_lock, flags);
 	event = du_crtc->event;
-	du_crtc->event = NULL;
+	if (event) {
+		/* ignore DRM_EVENT_VBLANK and serve only page flips */
+		if (event->event.base.type == DRM_EVENT_FLIP_COMPLETE)
+			du_crtc->event = NULL;
+		else
+			event = NULL;
+	}
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 
-	if (event == NULL)
+	if (!event)
 		return;
 
 	spin_lock_irqsave(&dev->event_lock, flags);
@@ -348,26 +360,37 @@ static int xendrm_du_crtc_page_flip(struct drm_crtc *crtc,
 
 void xendrm_du_crtc_on_page_flip(struct xendrm_du_crtc *du_crtc)
 {
-	DRM_ERROR("%s\n", __FUNCTION__);
 #if 0
+	DRM_ERROR("%s\n", __FUNCTION__);
 	drm_crtc_handle_vblank(&du_crtc->crtc);
-#endif
 	xendrm_du_crtc_finish_page_flip(du_crtc);
+#endif
+}
+
+static void xendrm_du_crtc_timer_callback(unsigned long data)
+{
+	struct xendrm_du_crtc *du_crtc = (struct xendrm_du_crtc *)data;
+	unsigned long flags;
+
+//	DRM_DEBUG("%s\n", __FUNCTION__);
+	spin_lock_irqsave(&du_crtc->timer_lock, flags);
+	xendrm_du_crtc_timer_rearm(du_crtc);
+	spin_unlock_irqrestore(&du_crtc->timer_lock, flags);
+	if (!xendrm_du_crtc_page_flip_pending(du_crtc))
+		xendrm_du_crtc_on_page_flip(du_crtc);
 }
 
 static int xendrm_crtc_set_config(struct drm_mode_set *set)
 {
 	struct drm_crtc *crtc = set->crtc;
 	struct xendrm_du_crtc *du_crtc = to_xendrm_crtc(crtc);
-	unsigned long flags;
 
-	DRM_ERROR("%s\n", __FUNCTION__);
-	spin_lock_irqsave(&du_crtc->timer_lock, flags);
-	DRM_ERROR("%s vrefresh = %d\n", __FUNCTION__,
-		drm_mode_vrefresh(set->mode));
-	du_crtc->timer_period =
-		msecs_to_jiffies(1000 / drm_mode_vrefresh(set->mode));
-	spin_unlock_irqrestore(&du_crtc->timer_lock, flags);
+	if (set->mode) {
+		DRM_ERROR("%s vrefresh = %d\n", __FUNCTION__,
+			drm_mode_vrefresh(set->mode));
+		xendrm_du_crtc_timer_set_period(du_crtc,
+			msecs_to_jiffies(1000 / drm_mode_vrefresh(set->mode)));
+	}
 	return drm_atomic_helper_set_config(set);
 }
 
@@ -375,17 +398,24 @@ static void xendrm_du_crtc_enable(struct drm_crtc *crtc)
 {
 	struct xendrm_du_crtc *du_crtc = to_xendrm_crtc(crtc);
 
-	DRM_DEBUG_KMS("%s\n", __FUNCTION__);
+	if (du_crtc->enabled)
+		return;
+	du_crtc->enabled = true;
+	DRM_DEBUG("%s\n", __FUNCTION__);
 	drm_crtc_vblank_on(crtc);
-	xendrm_du_crtc_timer_rearm(du_crtc);
+	xendrm_du_crtc_timer_start(du_crtc);
 }
 
 static void xendrm_du_crtc_disable(struct drm_crtc *crtc)
 {
 	struct xendrm_du_crtc *du_crtc = to_xendrm_crtc(crtc);
 
-	DRM_DEBUG_KMS("%s\n", __FUNCTION__);
+	if (!du_crtc->enabled)
+		return;
+	du_crtc->enabled = false;
+	DRM_DEBUG("%s\n", __FUNCTION__);
 	xendrm_du_crtc_wait_page_flip(du_crtc);
+	xendrm_du_crtc_timer_stop(du_crtc);
 	drm_crtc_vblank_off(crtc);
 }
 
@@ -406,6 +436,8 @@ static void xendrm_du_crtc_atomic_begin(struct drm_crtc *crtc,
 
 		spin_lock_irqsave(&dev->event_lock, flags);
 		du_crtc->event = event;
+		/* consume event */
+		crtc->state->event = NULL;
 		spin_unlock_irqrestore(&dev->event_lock, flags);
 	}
 }
@@ -440,8 +472,9 @@ int xendrm_du_crtc_create(struct xendrm_du_device *xendrm_du,
 	primary = xendrm_du_crtc_create_primary(xendrm_du, du_crtc);
 	if (!primary)
 		return -ENOMEM;
+
 	/* only primary plane, no cursor */
-	ret = drm_crtc_init_with_planes(xendrm_du->drm_dev, &du_crtc->crtc,
+	ret = drm_crtc_init_with_planes(xendrm_du->ddev, &du_crtc->crtc,
 		primary, NULL, &xendrm_du_drm_crtc_funcs, NULL);
 	if (ret) {
 		primary->funcs->destroy(primary);
@@ -449,6 +482,6 @@ int xendrm_du_crtc_create(struct xendrm_du_device *xendrm_du,
 	}
 	drm_crtc_helper_add(&du_crtc->crtc, &xendrm_du_drm_crtc_helper_funcs);
 	xendrm_du_crtc_timer_create(du_crtc);
-	drm_crtc_vblank_off(&du_crtc->crtc);
+//	drm_crtc_vblank_reset(&du_crtc->crtc);
 	return 0;
 }

@@ -15,6 +15,7 @@
  */
 
 #include <drm/drmP.h>
+#include <drm/drm_fb_cma_helper.h>
 #include <drm/drm_gem_cma_helper.h>
 
 #include "xen-drm.h"
@@ -22,25 +23,18 @@
 #include "xen-drm-kms.h"
 #include "xen-drm-logs.h"
 
-void xendrm_preclose(struct drm_device *dev, struct drm_file *file)
-{
-}
-
-void xendrm_postclose(struct drm_device *dev, struct drm_file *file)
-{
-}
-
 void xendrm_lastclose(struct drm_device *dev)
 {
+	struct xendrm_du_device *xendrm_du = dev->dev_private;
+
+	drm_fbdev_cma_restore_mode(xendrm_du->fbdev);
 }
 
 int xendrm_enable_vblank(struct drm_device *dev, unsigned int pipe)
 {
-	struct xendrm_du_device *xendrm_du = to_xendrm_du_device(&dev);
+	struct xendrm_du_device *xendrm_du = dev->dev_private;
 
 	if (unlikely(pipe >= xendrm_du->num_crtcs)) {
-		DRM_ERROR("%s pipe %d xendrm_du->num_crtcs %d",
-			pipe, xendrm_du->num_crtcs);
 		return -EINVAL;
 	}
 	xendrm_du_crtc_enable_vblank(&xendrm_du->crtcs[pipe], true);
@@ -49,7 +43,7 @@ int xendrm_enable_vblank(struct drm_device *dev, unsigned int pipe)
 
 void xendrm_disable_vblank(struct drm_device *dev, unsigned int pipe)
 {
-	struct xendrm_du_device *xendrm_du = to_xendrm_du_device(&dev);
+	struct xendrm_du_device *xendrm_du = dev->dev_private;
 
 	if (unlikely(pipe >= xendrm_du->num_crtcs))
 		return;
@@ -109,11 +103,11 @@ static const struct file_operations xendrm_fops = {
 static struct drm_driver xendrm_driver = {
 	.driver_features           = DRIVER_GEM | DRIVER_MODESET |
 	                             DRIVER_PRIME | DRIVER_ATOMIC,
-	.preclose                  = xendrm_preclose,
 	.lastclose                 = xendrm_lastclose,
 	.get_vblank_counter        = drm_vblank_count,
 	.enable_vblank             = xendrm_enable_vblank,
 	.disable_vblank            = xendrm_disable_vblank,
+	.get_vblank_counter        = drm_vblank_no_hw_counter,
 	.gem_free_object           = xendrm_gem_free_object,
 	.gem_vm_ops                = &drm_gem_cma_vm_ops,
 	.prime_handle_to_fd        = drm_gem_prime_handle_to_fd,
@@ -159,7 +153,7 @@ int xendrm_probe(struct platform_device *pdev,
 	if (!ddev)
 		return -ENOMEM;
 
-	xendrm_du->drm_dev = ddev;
+	xendrm_du->ddev = ddev;
 	/*
 	 * FIXME: assume 1 CRTC and 1 Encoder per each connector
 	 */
@@ -201,9 +195,13 @@ fail:
 int xendrm_remove(struct platform_device *pdev)
 {
 	struct xendrm_du_device *xendrm_du = platform_get_drvdata(pdev);
-	struct drm_device *drm_dev = xendrm_du->drm_dev;
+	struct drm_device *drm_dev = xendrm_du->ddev;
 
 	drm_dev_unregister(drm_dev);
+	if (xendrm_du->fbdev) {
+		drm_fbdev_cma_fini(xendrm_du->fbdev);
+		xendrm_du->fbdev = NULL;
+	}
 	xendrm_du_modeset_cleanup(xendrm_du);
 	drm_vblank_cleanup(drm_dev);
 	drm_dev_unref(drm_dev);

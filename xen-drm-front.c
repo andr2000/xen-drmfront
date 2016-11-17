@@ -152,6 +152,7 @@ static inline struct xendrm_req *ddrv_be_prepare_req(
 static int ddrv_be_stream_do_io(struct xdrv_evtchnl_info *evtchnl,
 	struct xendrm_req *req, unsigned long flags)
 {
+#if 0
 	int ret;
 
 	reinit_completion(&evtchnl->u.ctrl.completion);
@@ -169,6 +170,10 @@ static int ddrv_be_stream_do_io(struct xdrv_evtchnl_info *evtchnl,
 	if (ret < 0)
 		return ret;
 	return drmif_to_kern_error(evtchnl->u.ctrl.resp_status);
+#else
+	spin_unlock_irqrestore(&evtchnl->drv_info->io_lock, flags);
+	return 0;
+#endif
 }
 
 int xendrm_front_mode_set(struct xendrm_du_crtc *du_crtc)
@@ -234,19 +239,23 @@ int xendrm_front_fb_destroy(struct platform_device *pdev, int fb_id)
 
 int xendrm_front_page_flip(struct platform_device *pdev, int crtc_id, int fb_id)
 {
-	struct xdrv_info *xdrv_info = to_xendrm_xdrv_info(&pdev);
+	struct xdrv_info *drv_info = to_xendrm_xdrv_info(&pdev);
 	struct xdrv_evtchnl_info *evtchnl;
 	struct xendrm_req *req;
 	unsigned long flags;
+	int ret;
 
-	if (unlikely(crtc_id >= xdrv_info->num_evt_pairs))
+	if (unlikely(crtc_id >= drv_info->num_evt_pairs))
 		return -EINVAL;
-	evtchnl = &xdrv_info->evt_pairs[crtc_id].ctrl;
-	spin_lock_irqsave(&xdrv_info->io_lock, flags);
+	evtchnl = &drv_info->evt_pairs[crtc_id].ctrl;
+	mutex_lock(&drv_info->io_generic_evt_lock);
+	spin_lock_irqsave(&drv_info->io_lock, flags);
 	req = ddrv_be_prepare_req(evtchnl, XENDRM_OP_PG_FLIP);
 	req->u.data.op.pg_flip.crtc_id = crtc_id;
 	req->u.data.op.pg_flip.fb_id = fb_id;
-	return ddrv_be_stream_do_io(evtchnl, req, flags);
+	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
+	mutex_unlock(&drv_info->io_generic_evt_lock);
+	return ret;
 }
 
 static struct xendrm_front_funcs xendrm_front_funcs = {

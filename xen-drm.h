@@ -27,13 +27,11 @@
 
 struct xendrm_front_funcs;
 
-#define to_xendrm_du_device(e) \
-	container_of(e, struct xendrm_du_device, drm_dev)
-
 struct xendrm_du_device {
 	struct xendrm_front_funcs *front_funcs;
 	struct platform_device *pdev;
-	struct drm_device *drm_dev;
+	struct drm_device *ddev;
+	struct drm_fbdev_cma *fbdev;
 	int num_crtcs;
 	struct xendrm_plat_data *platdata;
 	struct xendrm_du_crtc crtcs[XENDRM_DU_MAX_CRTCS];
@@ -45,9 +43,6 @@ struct xendrm_cfg_connector {
 	int width;
 	int height;
 	char *xenstore_path;
-};
-
-struct xendrm_cfg_card {
 };
 
 struct xendrm_plat_data {

@@ -24,9 +24,9 @@
 #include "xen-drm-front.h"
 #include "xen-drm-kms.h"
 
-void xendrm_du_fb_destroy(struct drm_framebuffer *fb)
+static void xendrm_du_fb_destroy(struct drm_framebuffer *fb)
 {
-	struct xendrm_du_device *xendrm_du = to_xendrm_du_device(&fb->dev);
+	struct xendrm_du_device *xendrm_du = fb->dev->dev_private;
 
 	DRM_ERROR("%s\n", __FUNCTION__);
 	xendrm_du->front_funcs->fb_destroy(xendrm_du->pdev, fb->base.id);
@@ -41,10 +41,10 @@ static struct drm_framebuffer *
 xendrm_du_fb_create(struct drm_device *dev, struct drm_file *file_priv,
 	const struct drm_mode_fb_cmd2 *mode_cmd)
 {
-	struct xendrm_du_device *xendrm_du = to_xendrm_du_device(&dev);
+	struct xendrm_du_device *xendrm_du = dev->dev_private;
 	static struct drm_framebuffer *fb;
 
-	DRM_ERROR("%s\n", __FUNCTION__);
+	DRM_ERROR("%s drm_dev %p xendrm_du %p\n", __FUNCTION__, dev, xendrm_du);
 	fb = drm_fb_cma_create_with_funcs(dev, file_priv,
 		mode_cmd, &xendr_du_fb_funcs);
 	if (IS_ERR_OR_NULL(fb)) {
@@ -58,6 +58,9 @@ xendrm_du_fb_create(struct drm_device *dev, struct drm_file *file_priv,
 
 static void xendrm_du_output_poll_changed(struct drm_device *dev)
 {
+	struct xendrm_du_device *xendrm_du = dev->dev_private;
+
+	drm_fbdev_cma_hotplug_event(xendrm_du->fbdev);
 }
 
 static const struct drm_mode_config_funcs xendrm_du_mode_config_funcs = {
@@ -69,7 +72,8 @@ static const struct drm_mode_config_funcs xendrm_du_mode_config_funcs = {
 
 int xendrm_du_modeset_init(struct xendrm_du_device *xendrm_du)
 {
-	struct drm_device *drm_dev = xendrm_du->drm_dev;
+	struct drm_device *drm_dev = xendrm_du->ddev;
+	struct drm_fbdev_cma *fbdev;
 	int i, ret;
 
 	drm_mode_config_init(drm_dev);
@@ -97,7 +101,18 @@ int xendrm_du_modeset_init(struct xendrm_du_device *xendrm_du)
 	}
 	drm_mode_config_reset(drm_dev);
 
-	drm_kms_helper_poll_init(drm_dev);
+	if (drm_dev->mode_config.num_connector) {
+		/* prefer 32 bit framebuffer */
+		fbdev = drm_fbdev_cma_init(drm_dev, 32,
+			drm_dev->mode_config.num_crtc,
+			drm_dev->mode_config.num_connector);
+		if (IS_ERR(fbdev))
+			return PTR_ERR(fbdev);
+		xendrm_du->fbdev = fbdev;
+	} else {
+		DRM_DEBUG("No connector found, disabling fbdev emulation\n");
+	}
+
 	return 0;
 fail:
 	drm_mode_config_cleanup(drm_dev);
@@ -106,12 +121,6 @@ fail:
 
 void xendrm_du_modeset_cleanup(struct xendrm_du_device *xendrm_du)
 {
-	struct drm_device *drm_dev = xendrm_du->drm_dev;
-	int i;
-
-	for (i = 0; i < xendrm_du->num_crtcs; i++) {
-		if (xendrm_du->crtcs[i].fbdev)
-			drm_fbdev_cma_fini(xendrm_du->crtcs[i].fbdev);
-	}
+	struct drm_device *drm_dev = xendrm_du->ddev;
 	drm_mode_config_cleanup(drm_dev);
 }

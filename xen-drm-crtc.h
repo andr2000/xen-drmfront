@@ -38,10 +38,10 @@ struct xendrm_du_crtc {
 	struct drm_crtc crtc;
 	struct drm_encoder encoder;
 	struct xendrm_du_connector connector;
-	struct drm_fbdev_cma *fbdev;
 	struct {
 		struct drm_property *alpha;
 	} props;
+	bool enabled;
 	/* vblank and flip handling */
 	wait_queue_head_t flip_wait;
 	struct drm_pending_vblank_event *event;
