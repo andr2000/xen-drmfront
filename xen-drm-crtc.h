@@ -43,6 +43,7 @@ struct xendrm_du_crtc {
 	} props;
 	bool enabled;
 	/* vblank and flip handling */
+	struct drm_pending_vblank_event *pg_flip_event;
 	wait_queue_head_t flip_wait;
 	struct timer_list timer_vblank;
 	spinlock_t timer_lock;

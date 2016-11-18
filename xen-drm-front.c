@@ -380,6 +380,7 @@ static irqreturn_t xdrv_evtchnl_interrupt_evt(int irq, void *dev_id)
 	unsigned long flags;
 
 	spin_lock_irqsave(&drv_info->io_lock, flags);
+	LOG0("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx got event, state %d", channel->state);
 	if (unlikely(channel->state != EVTCHNL_STATE_CONNECTED))
 		goto out;
 
@@ -392,6 +393,7 @@ static irqreturn_t xdrv_evtchnl_interrupt_evt(int irq, void *dev_id)
 		struct xendrm_evt *event;
 
 		event = &XENDRM_IN_RING_REF(page, cons);
+		LOG0("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx got event, type %d", event->u.data.type);
 		switch (event->u.data.type) {
 		case XENDRM_EVT_PG_FLIP:
 			if (likely(xendrm_front_funcs.on_page_flip)) {
