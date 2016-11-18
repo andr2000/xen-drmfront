@@ -339,8 +339,11 @@ static irqreturn_t xdrv_evtchnl_interrupt_ctrl(int irq, void *dev_id)
 		if (resp->u.data.id != channel->u.ctrl.resp_id)
 			continue;
 		switch (resp->u.data.operation) {
-		case XENDRM_OP_OPEN:
-		case XENDRM_OP_CLOSE:
+		case XENDRM_OP_PG_FLIP:
+		case XENDRM_OP_FB_CREATE:
+		case XENDRM_OP_FB_DESTROY:
+		case XENDRM_OP_DUMB_CREATE:
+		case XENDRM_OP_DUMB_DESTROY:
 			channel->u.ctrl.resp_status = resp->u.data.status;
 			complete(&channel->u.ctrl.completion);
 			break;
@@ -605,6 +608,20 @@ fail:
 	return ret;
 }
 
+static void xdrv_evtchnl_set_state(struct xdrv_info *drv_info,
+	enum xdrv_evtchnl_state state)
+{
+	unsigned long flags;
+	int i;
+
+	spin_lock_irqsave(&drv_info->io_lock, flags);
+	for (i = 0; i < drv_info->num_evt_pairs; i++) {
+		drv_info->evt_pairs[i].ctrl.state = state;
+		drv_info->evt_pairs[i].evt.state = state;
+	}
+	spin_unlock_irqrestore(&drv_info->io_lock, flags);
+
+}
 /* get number of nodes under the path to get number of
  * cards configured or number of connectors within the card
  */
@@ -634,19 +651,19 @@ static int xdrv_cfg_connector(struct xdrv_info *drv_info,
 		return -ENOMEM;
 	connector->xenstore_path = connector_path;
 	str = xenbus_read(XBT_NIL, connector_path,
-		XENSND_FIELD_TYPE, NULL);
+		XENDRM_FIELD_TYPE, NULL);
 	if (!IS_ERR(str)) {
 		strncpy(connector->type, str, sizeof(connector->type));
 		kfree(str);
 	}
 	if (xenbus_scanf(XBT_NIL, connector_path,
-			XENSND_FIELD_ID, "%d", &connector->id) < 0) {
+			XENDRM_FIELD_ID, "%d", &connector->id) < 0) {
 		connector->id = 0;
 		ret = -EINVAL;
 		LOG0("Wrong connector ID");
 		goto fail;
 	}
-	if (xenbus_scanf(XBT_NIL, connector_path, XENSND_FIELD_RESOLUTION,
+	if (xenbus_scanf(XBT_NIL, connector_path, XENDRM_FIELD_RESOLUTION,
 			"%d" XENDRM_LIST_SEPARATOR "%d",
 			&connector->width, &connector->height) < 0) {
 		connector->width = 0;
@@ -914,12 +931,14 @@ static int xdrv_be_on_initwait(struct xdrv_info *drv_info)
 
 static int xdrv_be_on_connected(struct xdrv_info *drv_info)
 {
+	xdrv_evtchnl_set_state(drv_info, EVTCHNL_STATE_CONNECTED);
 	return ddrv_init(drv_info);
 }
 
 static void xdrv_be_on_disconnected(struct xdrv_info *drv_info)
 {
 	xdrv_remove_internal(drv_info);
+	xdrv_evtchnl_set_state(drv_info, EVTCHNL_STATE_DISCONNECTED);
 }
 
 static void xdrv_be_on_changed(struct xenbus_device *xb_dev,
