@@ -27,6 +27,7 @@ int xendrm_enable_vblank(struct drm_device *dev, unsigned int pipe)
 {
 	struct xendrm_du_device *xendrm_du = dev->dev_private;
 
+	DRM_DEBUG("%s\n", __FUNCTION__);
 	if (unlikely(pipe >= xendrm_du->num_crtcs)) {
 		return -EINVAL;
 	}
@@ -38,6 +39,7 @@ void xendrm_disable_vblank(struct drm_device *dev, unsigned int pipe)
 {
 	struct xendrm_du_device *xendrm_du = dev->dev_private;
 
+	DRM_DEBUG("%s\n", __FUNCTION__);
 	if (unlikely(pipe >= xendrm_du->num_crtcs))
 		return;
 	xendrm_du_crtc_enable_vblank(&xendrm_du->crtcs[pipe], false);

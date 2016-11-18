@@ -1,2 +1,4 @@
 1. Think of unifying incoming event handling: extend ring.h
 so fdif.h, kbdif.h and drmif.h use something generic.
+2. hi-res timer for vblank?
+3. fbdev emulation
