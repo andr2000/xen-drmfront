@@ -430,6 +430,16 @@ static void xendrm_du_crtc_atomic_begin(struct drm_crtc *crtc,
 	DRM_DEBUG("%s\n", __FUNCTION__);
 }
 
+static void xendrm_du_dump_vblank_event(struct drm_pending_vblank_event *e)
+{
+	if (!e) {
+		DRM_ERROR("NO EVENT =================================\n");
+		return;
+	}
+	DRM_ERROR("================================= EVENT type %d pipe %d\n",
+		e->event.base.type, e->pipe);
+}
+
 static void xendrm_du_crtc_atomic_flush(struct drm_crtc *crtc,
 	struct drm_crtc_state *old_crtc_state)
 {
@@ -441,7 +451,7 @@ static void xendrm_du_crtc_atomic_flush(struct drm_crtc *crtc,
 	if (event) {
 		unsigned long flags;
 
-		DRM_DEBUG("%s have event\n", __FUNCTION__);
+		xendrm_du_dump_vblank_event(event);
 		spin_lock_irqsave(&dev->event_lock, flags);
 		crtc->state->event = NULL;
 		if (drm_crtc_vblank_get(crtc) == 0)
