@@ -23,6 +23,16 @@
 #include "xen-drm.h"
 #include "xen-drm-front.h"
 
+static void xendrm_du_dump_vblank_event(struct drm_pending_vblank_event *e)
+{
+	if (!e) {
+		DRM_ERROR("NO EVENT =================================\n");
+		return;
+	}
+	DRM_ERROR("================================= EVENT %p type %d pipe %d\n",
+		e, e->event.base.type, e->pipe);
+}
+
 static inline struct xendrm_du_connector *
 to_xendrm_connector(struct drm_connector *connector)
 {
@@ -290,12 +300,6 @@ void xendrm_du_crtc_enable_vblank(struct xendrm_du_crtc *du_crtc, bool enable)
 		xendrm_du_crtc_timer_stop(du_crtc);
 }
 
-static bool inline xendrm_du_crtc_page_flip_pending_internal(
-	struct xendrm_du_crtc *du_crtc)
-{
-	return du_crtc->pg_flip_event != NULL;
-}
-
 static bool xendrm_du_crtc_page_flip_pending(struct xendrm_du_crtc *du_crtc)
 {
 	struct drm_device *dev = du_crtc->crtc.dev;
@@ -303,60 +307,105 @@ static bool xendrm_du_crtc_page_flip_pending(struct xendrm_du_crtc *du_crtc)
 	bool pending;
 
 	spin_lock_irqsave(&dev->event_lock, flags);
-	pending = xendrm_du_crtc_page_flip_pending_internal(du_crtc);
+	pending = du_crtc->pg_flip_event != NULL;
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 	return pending;
 }
 
 static int xendrm_du_crtc_do_page_flip(struct drm_crtc *crtc,
 	struct drm_framebuffer *fb, struct drm_pending_vblank_event *event,
-	uint32_t flags)
+	uint32_t drm_flags)
 {
 	struct xendrm_du_crtc *du_crtc = to_xendrm_crtc(crtc);
+	struct drm_device *dev = du_crtc->crtc.dev;
 	struct xendrm_du_device *xendrm_du;
+	unsigned long flags;
 	int ret;
 
 	DRM_ERROR("%s =============================== start\n", __FUNCTION__);
+	xendrm_du_dump_vblank_event(event);
+	spin_lock_irqsave(&dev->event_lock, flags);
+	if (du_crtc->pg_flip_event) {
+		/* this can happen if user space doesn't honor
+		 * page flip completed events
+		 */
+		DRM_ERROR("already have pending page flip\n");
+		spin_unlock_irqrestore(&dev->event_lock, flags);
+		return -EBUSY;
+	}
+	/* FIXME this event is not yet fully initialized by the DRM core
+	 * so it cannot be used to send events to user space yet
+	 * there are 2 cases:
+	 * 1. backend sends page flip completed before we can propagate
+	 * this event to the user space (atomic_begin/flush called)
+	 * 2. backend is clamsy and sends event later than atomic_flush
+	 */
+	du_crtc->pg_flip_event = event;
+	/* atomic_flush will happen */
+	du_crtc->pg_flip_flush_queued = true;
+	du_crtc->pg_flip_be_ntfy_fired = false;
+	spin_unlock_irqrestore(&dev->event_lock, flags);
 	xendrm_du = du_crtc->xendrm_du;
 	ret = xendrm_du->front_funcs->page_flip(
 		xendrm_du->xdrv_info, du_crtc->index, fb->base.id);
 	DRM_ERROR("%s =============================== ret %d\n", __FUNCTION__, ret);
-	if (ret < 0)
+	if (ret < 0) {
+		spin_lock_irqsave(&dev->event_lock, flags);
+		du_crtc->pg_flip_event = NULL;
+		spin_unlock_irqrestore(&dev->event_lock, flags);
 		return ret;
-	return drm_atomic_helper_page_flip(crtc, fb, event, flags);
+	}
+	return drm_atomic_helper_page_flip(crtc, fb, event, drm_flags);
 }
 
+/* CAUTION!!! must be called with spinlock held */
 static void xendrm_du_crtc_ntfy_page_flip_completed(struct xendrm_du_crtc *du_crtc)
 {
 	struct drm_device *dev = du_crtc->crtc.dev;
-	unsigned long flags;
 
-	DRM_ERROR("%s\n", __FUNCTION__);
+	DRM_ERROR("%s ====================================== \n", __FUNCTION__);
 	dev = du_crtc->xendrm_du->ddev;
-	spin_lock_irqsave(&dev->event_lock, flags);
 	if (du_crtc->pg_flip_event) {
+		xendrm_du_dump_vblank_event(du_crtc->pg_flip_event);
 		drm_crtc_send_vblank_event(&du_crtc->crtc,
 			du_crtc->pg_flip_event);
 		du_crtc->pg_flip_event = NULL;
 	}
-	spin_unlock_irqrestore(&dev->event_lock, flags);
 }
 
 static void xendrm_du_crtc_wait_page_flip(struct xendrm_du_crtc *du_crtc)
 {
+	struct drm_device *dev = du_crtc->crtc.dev;
+	unsigned long flags;
+
 	if (wait_event_timeout(du_crtc->flip_wait,
 			!xendrm_du_crtc_page_flip_pending(du_crtc),
 			msecs_to_jiffies(50)))
 		return;
 	DRM_ERROR("page flip timeout\n");
 	/* unblock user-space */
+	spin_lock_irqsave(&dev->event_lock, flags);
 	xendrm_du_crtc_ntfy_page_flip_completed(du_crtc);
+	spin_unlock_irqrestore(&dev->event_lock, flags);
 }
 
 void xendrm_du_crtc_on_page_flip(struct xendrm_du_crtc *du_crtc)
 {
+	struct drm_device *dev = du_crtc->crtc.dev;
+	unsigned long flags;
+
 	DRM_ERROR("%s =============================== EVENT\n", __FUNCTION__);
-	xendrm_du_crtc_ntfy_page_flip_completed(du_crtc);
+	spin_lock_irqsave(&dev->event_lock, flags);
+	/* are we delivering faster than atomic_flush happens?
+	 * if so, then null pg_flip_event and atomic_flush will anyways
+	 * receive its own copy. but nulling it will signal to atomic_flush
+	 * */
+	if (du_crtc->pg_flip_flush_queued)
+		du_crtc->pg_flip_be_ntfy_fired = true;
+	else
+		xendrm_du_crtc_ntfy_page_flip_completed(du_crtc);
+	spin_unlock_irqrestore(&dev->event_lock, flags);
+
 	wake_up(&du_crtc->flip_wait);
 }
 
@@ -414,20 +463,9 @@ static void xendrm_du_crtc_disable(struct drm_crtc *crtc)
 	drm_crtc_vblank_off(crtc);
 }
 
-static void xendrm_du_dump_vblank_event(struct drm_pending_vblank_event *e)
-{
-	if (!e) {
-		DRM_ERROR("NO EVENT =================================\n");
-		return;
-	}
-	DRM_ERROR("================================= EVENT type %d pipe %d\n",
-		e->event.base.type, e->pipe);
-}
-
 static int xendrm_du_crtc_atomic_check(struct drm_crtc *crtc,
 	struct drm_crtc_state *state)
 {
-	struct xendrm_du_crtc *du_crtc = to_xendrm_crtc(crtc);
 	struct drm_pending_vblank_event *event = crtc->state->event;
 
 	DRM_DEBUG("%s\n", __FUNCTION__);
@@ -456,10 +494,11 @@ static void xendrm_du_crtc_atomic_flush(struct drm_crtc *crtc,
 		spin_lock_irqsave(&dev->event_lock, flags);
 		crtc->state->event = NULL;
 		if (likely(event->event.base.type == DRM_EVENT_FLIP_COMPLETE)) {
-			/* will send this event on page flip
-			 * event from the backend
-			 * */
-			du_crtc->pg_flip_event = event;
+			du_crtc->pg_flip_flush_queued = false;
+			if (du_crtc->pg_flip_be_ntfy_fired)
+				xendrm_du_crtc_ntfy_page_flip_completed(du_crtc);
+			else
+				du_crtc->pg_flip_event = event;
 		} else {
 			if (drm_crtc_vblank_get(crtc) == 0)
 				drm_crtc_arm_vblank_event(crtc, event);
