@@ -463,22 +463,6 @@ static void xendrm_du_crtc_disable(struct drm_crtc *crtc)
 	drm_crtc_vblank_off(crtc);
 }
 
-static int xendrm_du_crtc_atomic_check(struct drm_crtc *crtc,
-	struct drm_crtc_state *state)
-{
-	struct drm_pending_vblank_event *event = crtc->state->event;
-
-	DRM_DEBUG("%s\n", __FUNCTION__);
-	xendrm_du_dump_vblank_event(event);
-	return 0;
-}
-
-static void xendrm_du_crtc_atomic_begin(struct drm_crtc *crtc,
-	struct drm_crtc_state *old_crtc_state)
-{
-	DRM_DEBUG("%s\n", __FUNCTION__);
-}
-
 static void xendrm_du_crtc_atomic_flush(struct drm_crtc *crtc,
 	struct drm_crtc_state *old_crtc_state)
 {
@@ -510,8 +494,6 @@ static void xendrm_du_crtc_atomic_flush(struct drm_crtc *crtc,
 }
 
 static const struct drm_crtc_helper_funcs xendrm_du_drm_crtc_helper_funcs = {
-	.atomic_check = xendrm_du_crtc_atomic_check,
-	.atomic_begin = xendrm_du_crtc_atomic_begin,
 	.atomic_flush = xendrm_du_crtc_atomic_flush,
 	.enable = xendrm_du_crtc_enable,
 	.disable = xendrm_du_crtc_disable,

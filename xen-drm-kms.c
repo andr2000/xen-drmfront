@@ -57,18 +57,10 @@ xendrm_du_fb_create(struct drm_device *dev, struct drm_file *file_priv,
 	return fb;
 }
 
-
-static int xendrm_du_atomic_commit(struct drm_device *dev,
-	struct drm_atomic_state *state, bool nonblock)
-{
-	DRM_DEBUG("%s nonblock %d\n", __FUNCTION__, nonblock);
-	return drm_atomic_helper_commit(dev, state, nonblock);
-}
-
 static const struct drm_mode_config_funcs xendrm_du_mode_config_funcs = {
 	.fb_create = xendrm_du_fb_create,
 	.atomic_check = drm_atomic_helper_check,
-	.atomic_commit = xendrm_du_atomic_commit,
+	.atomic_commit = drm_atomic_helper_commit,
 };
 
 int xendrm_du_modeset_init(struct xendrm_du_device *xendrm_du)
