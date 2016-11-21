@@ -18,6 +18,8 @@
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_plane_helper.h>
 
+#include <linux/ktime.h>
+
 #include <video/videomode.h>
 
 #include "xen-drm.h"
@@ -409,12 +411,17 @@ void xendrm_du_crtc_on_page_flip(struct xendrm_du_crtc *du_crtc)
 	wake_up(&du_crtc->flip_wait);
 }
 
+static ktime_t ts;
+
 static void xendrm_du_crtc_timer_callback(unsigned long data)
 {
 	struct xendrm_du_crtc *du_crtc = (struct xendrm_du_crtc *)data;
 	unsigned long flags;
+	ktime_t kt;
 
-	DRM_DEBUG("%s\n", __FUNCTION__);
+	kt = ktime_get();
+	DRM_DEBUG("%s *********************************************************************************** %llu\n", __FUNCTION__, ktime_ms_delta(kt, ts));
+	ts = kt;
 	spin_lock_irqsave(&du_crtc->timer_lock, flags);
 	xendrm_du_crtc_timer_rearm(du_crtc);
 	spin_unlock_irqrestore(&du_crtc->timer_lock, flags);
