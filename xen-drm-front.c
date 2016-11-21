@@ -168,9 +168,32 @@ static int ddrv_be_stream_do_io(struct xdrv_evtchnl_info *evtchnl,
 	return drmif_to_kern_error(evtchnl->u.ctrl.resp_status);
 }
 
-int xendrm_front_mode_set(struct xendrm_du_crtc *du_crtc)
+int xendrm_front_mode_set(struct xendrm_du_crtc *du_crtc, uint32_t x, uint32_t y,
+	uint32_t width, uint32_t height, uint32_t bpp, uint32_t fb_id)
+
 {
-	return 0;
+	struct xdrv_evtchnl_info *evtchnl;
+	struct xdrv_info *drv_info;
+	struct xendrm_req *req;
+	unsigned long flags;
+	int ret;
+
+	drv_info = du_crtc->xendrm_du->xdrv_info;
+	evtchnl = &drv_info->evt_pairs[du_crtc->index].ctrl;
+	if (unlikely(!evtchnl))
+		return -EIO;
+	mutex_lock(&drv_info->io_generic_evt_lock);
+	spin_lock_irqsave(&drv_info->io_lock, flags);
+	req = ddrv_be_prepare_req(evtchnl, XENDRM_OP_SET_CONFIG);
+	req->u.data.op.set_config.x = x;
+	req->u.data.op.set_config.y = y;
+	req->u.data.op.set_config.width = width;
+	req->u.data.op.set_config.height = height;
+	req->u.data.op.set_config.bpp = bpp;
+	req->u.data.op.set_config.fb_id = fb_id;
+	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
+	mutex_unlock(&drv_info->io_generic_evt_lock);
+	return ret;
 }
 
 int xendrm_front_dumb_create(struct xdrv_info *drv_info,

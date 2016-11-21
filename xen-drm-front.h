@@ -24,7 +24,8 @@ struct drm_gem_object;
 struct drm_framebuffer;
 
 struct xendrm_front_funcs {
-	int (*mode_set)(struct xendrm_du_crtc *du_crtc);
+	int (*mode_set)(struct xendrm_du_crtc *du_crtc, uint32_t x, uint32_t y,
+		uint32_t width, uint32_t height, uint32_t bpp, uint32_t fb_id);
 	int (*dumb_create)(struct xdrv_info *drv_info, struct drm_gem_object *gem_obj);
 	int (*dumb_destroy)(struct xdrv_info *drv_info, struct drm_gem_object *gem_obj);
 	int (*fb_create)(struct xdrv_info *drv_info, struct drm_framebuffer *fb);
