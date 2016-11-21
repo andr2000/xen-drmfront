@@ -616,6 +616,8 @@ static void xdrv_evtchnl_set_state(struct xdrv_info *drv_info,
 	unsigned long flags;
 	int i;
 
+	if (!drv_info->evt_pairs)
+		return;
 	spin_lock_irqsave(&drv_info->io_lock, flags);
 	for (i = 0; i < drv_info->num_evt_pairs; i++) {
 		drv_info->evt_pairs[i].ctrl.state = state;
