@@ -2,3 +2,6 @@
 so fdif.h, kbdif.h and drmif.h use something generic.
 2. hi-res timer for vblank?
 3. fbdev emulation
+4. Handle du_crtc->pg_flip_flush_queued/du_crtc->pg_flip_be_ntfy_fired
+simpler
+
