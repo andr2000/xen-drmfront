@@ -798,10 +798,13 @@ static int xdrv_cfg_card(struct xdrv_info *drv_info,
 	return 0;
 }
 
+static void xdrv_sh_buf_free_all(struct xdrv_info *drv_info);
+
 static void xdrv_remove_internal(struct xdrv_info *drv_info)
 {
 	ddrv_cleanup(drv_info);
 	xdrv_evtchnl_free_all(drv_info);
+	xdrv_sh_buf_free_all(drv_info);
 }
 
 static int xdrv_probe(struct xenbus_device *xb_dev,
@@ -877,6 +880,7 @@ static void xdrv_sh_buf_free_by_handle(struct xdrv_info *drv_info,
 
 	list_for_each_safe(pos, q, &drv_info->dumb_buf->list) {
 		struct xdrv_shared_buffer_info *buf;
+
 		buf = list_entry(pos, struct xdrv_shared_buffer_info, list);
 		if (buf->handle == handle) {
 			list_del(pos);
@@ -886,6 +890,23 @@ static void xdrv_sh_buf_free_by_handle(struct xdrv_info *drv_info,
 			break;
 		}
 	}
+}
+
+static void xdrv_sh_buf_free_all(struct xdrv_info *drv_info)
+{
+	struct list_head *pos, *q;
+
+	mutex_lock(&drv_info->io_generic_evt_lock);
+	list_for_each_safe(pos, q, &drv_info->dumb_buf->list) {
+		struct xdrv_shared_buffer_info *buf;
+
+		buf = list_entry(pos, struct xdrv_shared_buffer_info, list);
+		list_del(pos);
+		xdrv_sh_buf_free(buf);
+		if (drv_info->dumb_buf == buf)
+			drv_info->dumb_buf = NULL;
+	}
+	mutex_unlock(&drv_info->io_generic_evt_lock);
 }
 
 void xdrv_sh_buf_fill_page_dir(struct xdrv_shared_buffer_info *buf,
