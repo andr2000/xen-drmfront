@@ -307,20 +307,20 @@ int xendrm_front_fb_destroy(struct xdrv_info *drv_info, uint32_t fb_id)
 	return ret;
 }
 
-int xendrm_front_page_flip(struct xdrv_info *drv_info, int crtc_id, uint32_t fb_id)
+int xendrm_front_page_flip(struct xdrv_info *drv_info, int crtc_idx, uint32_t fb_id)
 {
 	struct xdrv_evtchnl_info *evtchnl;
 	struct xendrm_req *req;
 	unsigned long flags;
 	int ret;
 
-	if (unlikely(crtc_id >= drv_info->num_evt_pairs))
+	if (unlikely(crtc_idx >= drv_info->num_evt_pairs))
 		return -EINVAL;
-	evtchnl = &drv_info->evt_pairs[crtc_id].ctrl;
+	evtchnl = &drv_info->evt_pairs[crtc_idx].ctrl;
 	mutex_lock(&drv_info->io_generic_evt_lock);
 	spin_lock_irqsave(&drv_info->io_lock, flags);
 	req = ddrv_be_prepare_req(evtchnl, XENDRM_OP_PG_FLIP);
-	req->u.data.op.pg_flip.crtc_id = crtc_id;
+	req->u.data.op.pg_flip.crtc_idx = crtc_idx;
 	req->u.data.op.pg_flip.fb_id = fb_id;
 	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
 	mutex_unlock(&drv_info->io_generic_evt_lock);
@@ -479,7 +479,7 @@ static irqreturn_t xdrv_evtchnl_interrupt_evt(int irq, void *dev_id)
 			if (likely(xendrm_front_funcs.on_page_flip)) {
 				xendrm_front_funcs.on_page_flip(
 					drv_info->ddrv_pdev,
-					event->u.data.op.pg_flip.crtc_id,
+					event->u.data.op.pg_flip.crtc_idx,
 					event->u.data.op.pg_flip.fb_id);
 			}
 			break;

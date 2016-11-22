@@ -30,9 +30,9 @@ struct xendrm_front_funcs {
 	int (*fb_create)(struct xdrv_info *drv_info, uint32_t handle, uint32_t fb_id,
 		uint32_t width, uint32_t height, uint32_t pixel_format);
 	int (*fb_destroy)(struct xdrv_info *drv_info, uint32_t fb_id);
-	int (*page_flip)(struct xdrv_info *drv_info, int crtc_id, uint32_t fb_id);
+	int (*page_flip)(struct xdrv_info *drv_info, int crtc_idx, uint32_t fb_id);
 	/* CAUTION! this is called with a spin_lock held! */
-	void (*on_page_flip)(struct platform_device *pdev, int crtc_id, uint32_t fb_id);
+	void (*on_page_flip)(struct platform_device *pdev, int crtc_idx, uint32_t fb_id);
 };
 
 #endif /* __XEN_DRM_FRONT_H_ */
