@@ -81,6 +81,8 @@ struct xdrv_evtchnl_info {
 };
 
 struct xdrv_shared_buffer_info {
+	struct list_head list;
+	uint32_t handle;
 	int num_grefs;
 	grant_ref_t *grefs;
 	unsigned char *vdirectory;
@@ -105,6 +107,9 @@ struct xdrv_info {
 	int num_evt_pairs;
 	struct xdrv_evtchnl_pair_info *evt_pairs;
 	struct xendrm_plat_data cfg_plat_data;
+
+	/* dumb buffers */
+	struct xdrv_shared_buffer_info *dumb_buf;
 };
 
 struct DRMIF_TO_KERN_ERROR {
@@ -129,6 +134,11 @@ static int drmif_to_kern_error(int drmif_err)
 
 static inline void xdrv_evtchnl_flush(
 		struct xdrv_evtchnl_info *channel);
+static struct xdrv_shared_buffer_info *xdrv_sh_buf_alloc(
+	struct xdrv_info *drv_info, uint32_t handle,
+	void *vbuffer, unsigned int buffer_size);
+static grant_ref_t xdrv_sh_buf_get_dir_start(
+	struct xdrv_shared_buffer_info *buf);
 
 static inline struct xendrm_req *ddrv_be_prepare_req(
 	struct xdrv_evtchnl_info *evtchnl, uint8_t operation)
@@ -197,9 +207,10 @@ int xendrm_front_mode_set(struct xendrm_du_crtc *du_crtc, uint32_t x, uint32_t y
 }
 
 int xendrm_front_dumb_create(struct xdrv_info *drv_info, uint32_t handle, uint32_t width,
-	uint32_t height, uint32_t bpp, uint64_t size)
+	uint32_t height, uint32_t bpp, uint64_t size, void *vaddr)
 {
 	struct xdrv_evtchnl_info *evtchnl;
+	struct xdrv_shared_buffer_info *buf;
 	struct xendrm_req *req;
 	unsigned long flags;
 	int ret;
@@ -211,9 +222,11 @@ int xendrm_front_dumb_create(struct xdrv_info *drv_info, uint32_t handle, uint32
 	spin_lock_irqsave(&drv_info->io_lock, flags);
 	req = ddrv_be_prepare_req(evtchnl, XENDRM_OP_DUMB_CREATE);
 
-	size = round_up(size, PAGE_SIZE);
-	grant_ref_t gref_directory_start;
-
+	buf = xdrv_sh_buf_alloc(drv_info, handle, vaddr, size);
+	if (!buf)
+		return -ENOMEM;
+	req->u.data.op.dumb_create.gref_directory_start =
+		xdrv_sh_buf_get_dir_start(buf);
 	req->u.data.op.dumb_create.handle = handle;
 	req->u.data.op.dumb_create.width = width;
 	req->u.data.op.dumb_create.height = height;
@@ -819,15 +832,6 @@ static grant_ref_t xdrv_sh_buf_get_dir_start(
 	return buf->grefs[0];
 }
 
-static void xdrv_sh_buf_clear(struct xdrv_shared_buffer_info *buf)
-{
-	buf->num_grefs = 0;
-	buf->grefs = NULL;
-	buf->vdirectory = NULL;
-	buf->vbuffer = NULL;
-	buf->vbuffer_sz = 0;
-}
-
 static void xdrv_sh_buf_free(struct xdrv_shared_buffer_info *buf)
 {
 	int i;
@@ -841,9 +845,7 @@ static void xdrv_sh_buf_free(struct xdrv_shared_buffer_info *buf)
 	}
 	if (buf->vdirectory)
 		vfree(buf->vdirectory);
-	if (buf->vbuffer)
-		vfree(buf->vbuffer);
-	xdrv_sh_buf_clear(buf);
+	kfree(buf);
 }
 
 void xdrv_sh_buf_fill_page_dir(struct xdrv_shared_buffer_info *buf,
@@ -927,20 +929,27 @@ int xdrv_sh_buf_alloc_buffers(struct xdrv_shared_buffer_info *buf,
 	if (!buf->vdirectory)
 		return -ENOMEM;
 	buf->vbuffer_sz = num_pages_vbuffer * PAGE_SIZE;
-	buf->vbuffer = vmalloc(buf->vbuffer_sz);
-	if (!buf->vbuffer)
-		return -ENOMEM;
 	return 0;
 }
 
-static int xdrv_sh_buf_alloc(struct xenbus_device *xb_dev,
-	struct xdrv_shared_buffer_info *buf,
-	unsigned int buffer_size)
+static struct xdrv_shared_buffer_info *
+xdrv_sh_buf_alloc(struct xdrv_info *drv_info, uint32_t handle,
+	void *vbuffer, unsigned int buffer_size)
 {
+	struct xdrv_shared_buffer_info *buf;
 	int num_pages_vbuffer, num_grefs_per_page, num_pages_dir, num_grefs;
-	int ret;
 
-	xdrv_sh_buf_clear(buf);
+	if (!vbuffer)
+		return NULL;
+	buf = kzalloc(sizeof(*buf), GFP_KERNEL);
+	if (!buf)
+		return NULL;
+	if (!drv_info->dumb_buf) {
+		drv_info->dumb_buf = buf;
+		INIT_LIST_HEAD(&buf->list);
+	}
+	buf->vbuffer = vbuffer;
+	buf->handle = handle;
 	/* TODO: use XC_PAGE_SIZE */
 	num_pages_vbuffer = DIV_ROUND_UP(buffer_size, PAGE_SIZE);
 	/* number of grefs a page can hold with respect to the
@@ -952,16 +961,19 @@ static int xdrv_sh_buf_alloc(struct xenbus_device *xb_dev,
 	num_pages_dir = DIV_ROUND_UP(num_pages_vbuffer, num_grefs_per_page);
 	num_grefs = num_pages_vbuffer + num_pages_dir;
 
-	ret = xdrv_sh_buf_alloc_buffers(buf, num_pages_dir,
-		num_pages_vbuffer, num_grefs);
-	if (ret < 0)
-		return ret;
-	ret = xdrv_sh_buf_grant_refs(xb_dev, buf,
-		num_pages_dir, num_pages_vbuffer, num_grefs);
-	if (ret < 0)
-		return ret;
+	if (xdrv_sh_buf_alloc_buffers(buf, num_pages_dir,
+			num_pages_vbuffer, num_grefs) < 0)
+		goto fail;
+	if (xdrv_sh_buf_grant_refs(drv_info->xb_dev, buf,
+			num_pages_dir, num_pages_vbuffer, num_grefs) < 0)
+		goto fail;
 	xdrv_sh_buf_fill_page_dir(buf, num_pages_dir);
-	return 0;
+	return buf;
+fail:
+	if (drv_info->dumb_buf == buf)
+		drv_info->dumb_buf = NULL;
+	xdrv_sh_buf_free(buf);
+	return NULL;
 }
 
 static int xdrv_be_on_initwait(struct xdrv_info *drv_info)

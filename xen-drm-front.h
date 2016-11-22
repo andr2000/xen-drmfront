@@ -27,7 +27,7 @@ struct xendrm_front_funcs {
 	int (*mode_set)(struct xendrm_du_crtc *du_crtc, uint32_t x, uint32_t y,
 		uint32_t width, uint32_t height, uint32_t bpp, uint32_t fb_id);
 	int (*dumb_create)(struct xdrv_info *drv_info, uint32_t handle, uint32_t width,
-		uint32_t height, uint32_t bpp, uint64_t size);
+		uint32_t height, uint32_t bpp, uint64_t size, void *vaddr);
 	int (*dumb_destroy)(struct xdrv_info *drv_info, struct drm_gem_object *gem_obj);
 	int (*fb_create)(struct xdrv_info *drv_info, uint32_t handle, uint32_t fb_id,
 		uint32_t width, uint32_t height, uint32_t pixel_format);
