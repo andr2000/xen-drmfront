@@ -247,8 +247,6 @@ int xendrm_front_dumb_destroy(struct xdrv_info *drv_info, uint32_t handle)
 	int ret;
 
 	mutex_lock(&drv_info->io_generic_evt_lock);
-	xdrv_sh_buf_free_by_handle(drv_info, handle);
-
 	evtchnl = &drv_info->evt_pairs[GENERIC_OP_EVT_CHNL].ctrl;
 	if (unlikely(!evtchnl)) {
 		mutex_unlock(&drv_info->io_generic_evt_lock);
@@ -259,6 +257,7 @@ int xendrm_front_dumb_destroy(struct xdrv_info *drv_info, uint32_t handle)
 
 	req->u.data.op.dumb_destroy.handle = handle;
 	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
+	xdrv_sh_buf_free_by_handle(drv_info, handle);
 	mutex_unlock(&drv_info->io_generic_evt_lock);
 	return ret;
 }
