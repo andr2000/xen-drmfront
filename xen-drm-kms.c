@@ -37,8 +37,6 @@ static struct drm_framebuffer_funcs xendr_du_fb_funcs = {
 	.destroy = xendrm_du_fb_destroy,
 };
 
-
-
 static struct drm_framebuffer *
 xendrm_du_fb_create(struct drm_device *dev, struct drm_file *file_priv,
 	const struct drm_mode_fb_cmd2 *mode_cmd)
