@@ -139,6 +139,8 @@ static struct xdrv_shared_buffer_info *xdrv_sh_buf_alloc(
 	void *vbuffer, unsigned int buffer_size);
 static grant_ref_t xdrv_sh_buf_get_dir_start(
 	struct xdrv_shared_buffer_info *buf);
+static void xdrv_sh_buf_free_by_handle(struct xdrv_info *drv_info,
+	uint32_t handle);
 
 static inline struct xendrm_req *ddrv_be_prepare_req(
 	struct xdrv_evtchnl_info *evtchnl, uint8_t operation)
@@ -219,12 +221,13 @@ int xendrm_front_dumb_create(struct xdrv_info *drv_info, uint32_t handle, uint32
 	if (unlikely(!evtchnl))
 		return -EIO;
 	mutex_lock(&drv_info->io_generic_evt_lock);
+	buf = xdrv_sh_buf_alloc(drv_info, handle, vaddr, size);
+	if (!buf) {
+		mutex_unlock(&drv_info->io_generic_evt_lock);
+		return -ENOMEM;
+	}
 	spin_lock_irqsave(&drv_info->io_lock, flags);
 	req = ddrv_be_prepare_req(evtchnl, XENDRM_OP_DUMB_CREATE);
-
-	buf = xdrv_sh_buf_alloc(drv_info, handle, vaddr, size);
-	if (!buf)
-		return -ENOMEM;
 	req->u.data.op.dumb_create.gref_directory_start =
 		xdrv_sh_buf_get_dir_start(buf);
 	req->u.data.op.dumb_create.handle = handle;
@@ -236,10 +239,28 @@ int xendrm_front_dumb_create(struct xdrv_info *drv_info, uint32_t handle, uint32
 	return ret;
 }
 
-int xendrm_front_dumb_destroy(struct xdrv_info *drv_info,
-	struct drm_gem_object *gem_obj)
+int xendrm_front_dumb_destroy(struct xdrv_info *drv_info, uint32_t handle)
 {
-	return 0;
+	struct xdrv_evtchnl_info *evtchnl;
+	struct xendrm_req *req;
+	unsigned long flags;
+	int ret;
+
+	mutex_lock(&drv_info->io_generic_evt_lock);
+	xdrv_sh_buf_free_by_handle(drv_info, handle);
+
+	evtchnl = &drv_info->evt_pairs[GENERIC_OP_EVT_CHNL].ctrl;
+	if (unlikely(!evtchnl)) {
+		mutex_unlock(&drv_info->io_generic_evt_lock);
+		return -EIO;
+	}
+	spin_lock_irqsave(&drv_info->io_lock, flags);
+	req = ddrv_be_prepare_req(evtchnl, XENDRM_OP_DUMB_DESTROY);
+
+	req->u.data.op.dumb_destroy.handle = handle;
+	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
+	mutex_unlock(&drv_info->io_generic_evt_lock);
+	return ret;
 }
 
 int xendrm_front_fb_create(struct xdrv_info *drv_info,
@@ -848,6 +869,24 @@ static void xdrv_sh_buf_free(struct xdrv_shared_buffer_info *buf)
 	kfree(buf);
 }
 
+static void xdrv_sh_buf_free_by_handle(struct xdrv_info *drv_info,
+	uint32_t handle)
+{
+	struct list_head *pos, *q;
+
+	list_for_each_safe(pos, q, &drv_info->dumb_buf->list) {
+		struct xdrv_shared_buffer_info *buf;
+		buf = list_entry(pos, struct xdrv_shared_buffer_info, list);
+		if (buf->handle == handle) {
+			list_del(pos);
+			xdrv_sh_buf_free(buf);
+			if (drv_info->dumb_buf == buf)
+				drv_info->dumb_buf = NULL;
+			break;
+		}
+	}
+}
+
 void xdrv_sh_buf_fill_page_dir(struct xdrv_shared_buffer_info *buf,
 		int num_pages_dir)
 {
@@ -968,6 +1007,7 @@ xdrv_sh_buf_alloc(struct xdrv_info *drv_info, uint32_t handle,
 			num_pages_dir, num_pages_vbuffer, num_grefs) < 0)
 		goto fail;
 	xdrv_sh_buf_fill_page_dir(buf, num_pages_dir);
+	list_add(&(buf->list), &(drv_info->dumb_buf->list));
 	return buf;
 fail:
 	if (drv_info->dumb_buf == buf)

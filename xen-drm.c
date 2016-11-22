@@ -83,7 +83,10 @@ fail:
 static int xendrm_dumb_destroy(struct drm_file *file,
 	struct drm_device *dev, uint32_t handle)
 {
+	struct xendrm_du_device *xendrm_du = dev->dev_private;
+
 	DRM_ERROR("%s\n", __FUNCTION__);
+	xendrm_du->front_funcs->dumb_destroy(xendrm_du->xdrv_info, handle);
 	return drm_gem_dumb_destroy(file, dev, handle);
 }
 
