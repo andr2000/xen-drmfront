@@ -196,10 +196,31 @@ int xendrm_front_mode_set(struct xendrm_du_crtc *du_crtc, uint32_t x, uint32_t y
 	return ret;
 }
 
-int xendrm_front_dumb_create(struct xdrv_info *drv_info,
-	struct drm_gem_object *gem_obj)
+int xendrm_front_dumb_create(struct xdrv_info *drv_info, uint32_t handle, uint32_t width,
+	uint32_t height, uint32_t bpp, uint64_t size)
 {
-	return 0;
+	struct xdrv_evtchnl_info *evtchnl;
+	struct xendrm_req *req;
+	unsigned long flags;
+	int ret;
+
+	evtchnl = &drv_info->evt_pairs[GENERIC_OP_EVT_CHNL].ctrl;
+	if (unlikely(!evtchnl))
+		return -EIO;
+	mutex_lock(&drv_info->io_generic_evt_lock);
+	spin_lock_irqsave(&drv_info->io_lock, flags);
+	req = ddrv_be_prepare_req(evtchnl, XENDRM_OP_DUMB_CREATE);
+
+	size = round_up(size, PAGE_SIZE);
+	grant_ref_t gref_directory_start;
+
+	req->u.data.op.dumb_create.handle = handle;
+	req->u.data.op.dumb_create.width = width;
+	req->u.data.op.dumb_create.height = height;
+	req->u.data.op.dumb_create.bpp = bpp;
+	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
+	mutex_unlock(&drv_info->io_generic_evt_lock);
+	return ret;
 }
 
 int xendrm_front_dumb_destroy(struct xdrv_info *drv_info,
@@ -209,7 +230,8 @@ int xendrm_front_dumb_destroy(struct xdrv_info *drv_info,
 }
 
 int xendrm_front_fb_create(struct xdrv_info *drv_info,
-	struct drm_framebuffer *fb)
+	uint32_t handle, uint32_t fb_id, uint32_t width, uint32_t height,
+	uint32_t pixel_format)
 {
 	struct xdrv_evtchnl_info *evtchnl;
 	struct xendrm_req *req;
@@ -222,10 +244,11 @@ int xendrm_front_fb_create(struct xdrv_info *drv_info,
 	mutex_lock(&drv_info->io_generic_evt_lock);
 	spin_lock_irqsave(&drv_info->io_lock, flags);
 	req = ddrv_be_prepare_req(evtchnl, XENDRM_OP_FB_CREATE);
-	req->u.data.op.fb_create.fb_id = fb->base.id;
-	req->u.data.op.fb_create.width = fb->width;
-	req->u.data.op.fb_create.height = fb->height;
-	req->u.data.op.fb_create.pixel_format = fb->pixel_format;
+	req->u.data.op.fb_create.handle = handle;
+	req->u.data.op.fb_create.fb_id = fb_id;
+	req->u.data.op.fb_create.width = width;
+	req->u.data.op.fb_create.height = height;
+	req->u.data.op.fb_create.pixel_format = pixel_format;
 	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
 	mutex_unlock(&drv_info->io_generic_evt_lock);
 	return ret;

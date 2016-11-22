@@ -37,6 +37,8 @@ static struct drm_framebuffer_funcs xendr_du_fb_funcs = {
 	.destroy = xendrm_du_fb_destroy,
 };
 
+
+
 static struct drm_framebuffer *
 xendrm_du_fb_create(struct drm_device *dev, struct drm_file *file_priv,
 	const struct drm_mode_fb_cmd2 *mode_cmd)
@@ -47,9 +49,11 @@ xendrm_du_fb_create(struct drm_device *dev, struct drm_file *file_priv,
 	DRM_ERROR("%s drm_dev %p xendrm_du %p\n", __FUNCTION__, dev, xendrm_du);
 	fb = drm_fb_cma_create_with_funcs(dev, file_priv,
 		mode_cmd, &xendr_du_fb_funcs);
-	if (IS_ERR_OR_NULL(fb)) {
+	if (!IS_ERR_OR_NULL(fb)) {
+		/* FIXME: we take the first handle */
 		if (xendrm_du->front_funcs->fb_create(
-				xendrm_du->xdrv_info, fb) < 0) {
+				xendrm_du->xdrv_info, mode_cmd->handles[0], fb->base.id,
+				fb->width, fb->height, fb->pixel_format) < 0) {
 			drm_fb_cma_destroy(fb);
 			fb = NULL;
 		}

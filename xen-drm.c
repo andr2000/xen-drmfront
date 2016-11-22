@@ -48,24 +48,35 @@ void xendrm_disable_vblank(struct drm_device *dev, unsigned int pipe)
 static int xendrm_dumb_create(struct drm_file *file_priv, struct drm_device *dev,
 	struct drm_mode_create_dumb *args)
 {
+	struct xendrm_du_device *xendrm_du = dev->dev_private;
 	struct drm_gem_object *gem_obj;
+	struct drm_gem_cma_object *cma_obj;
 	int ret;
 
 	DRM_ERROR("%s\n", __FUNCTION__);
 	ret = drm_gem_cma_dumb_create(file_priv, dev, args);
-	if (ret)
+	if (ret < 0)
 		goto fail;
 	gem_obj = drm_gem_object_lookup(file_priv, args->handle);
 	if (!gem_obj) {
-		ret = -ENOMEM;
-		goto fail;
+		ret = -EINVAL;
+		goto fail_destroy;
 	}
 	drm_gem_object_unreference_unlocked(gem_obj);
-	DRM_ERROR("%s width %d height %d bpp %d pitch %d flags %d size %llu\n",
+	cma_obj = to_drm_gem_cma_obj(gem_obj);
+	if (xendrm_du->front_funcs->dumb_create(
+			xendrm_du->xdrv_info, args->handle, args->width,
+			args->height, args->bpp, args->size, cma_obj->vaddr) < 0)
+		goto fail_destroy;
+	DRM_ERROR("%s width %d height %d bpp %d flags %d size %llu\n",
 		__FUNCTION__, args->width, args->height, args->bpp,
-		args->pitch, args->flags, args->size);
+		args->flags, args->size);
 	return 0;
+
+fail_destroy:
+	drm_gem_dumb_destroy(file_priv, dev, args->handle);
 fail:
+	DRM_ERROR("Failed to create dumb buffer");
 	return ret;
 }
 
