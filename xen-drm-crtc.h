@@ -59,7 +59,7 @@ int xendrm_du_encoder_create(struct xendrm_du_device *xendrm_du,
 int xendrm_du_connector_create(struct xendrm_du_device *xendrm_du,
 	struct xendrm_du_crtc *du_crtc, struct xendrm_cfg_connector *cfg);
 
-void xendrm_du_crtc_on_page_flip(struct xendrm_du_crtc *du_crtc);
+void xendrm_du_crtc_on_page_flip(struct xendrm_du_crtc *du_crtc, uint32_t fb_id);
 void xendrm_du_crtc_enable_vblank(struct xendrm_du_crtc *du_crtc, bool enable);
 
 #endif /* __XEN_DRM_CRTC_H_ */

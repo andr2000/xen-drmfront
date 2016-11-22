@@ -288,7 +288,7 @@ int xendrm_front_fb_create(struct xdrv_info *drv_info,
 	return ret;
 }
 
-int xendrm_front_fb_destroy(struct xdrv_info *drv_info, int fb_id)
+int xendrm_front_fb_destroy(struct xdrv_info *drv_info, uint32_t fb_id)
 {
 	struct xdrv_evtchnl_info *evtchnl;
 	struct xendrm_req *req;
@@ -307,7 +307,7 @@ int xendrm_front_fb_destroy(struct xdrv_info *drv_info, int fb_id)
 	return ret;
 }
 
-int xendrm_front_page_flip(struct xdrv_info *drv_info, int crtc_id, int fb_id)
+int xendrm_front_page_flip(struct xdrv_info *drv_info, int crtc_id, uint32_t fb_id)
 {
 	struct xdrv_evtchnl_info *evtchnl;
 	struct xendrm_req *req;
@@ -479,7 +479,8 @@ static irqreturn_t xdrv_evtchnl_interrupt_evt(int irq, void *dev_id)
 			if (likely(xendrm_front_funcs.on_page_flip)) {
 				xendrm_front_funcs.on_page_flip(
 					drv_info->ddrv_pdev,
-					event->u.data.op.pg_flip.crtc_id);
+					event->u.data.op.pg_flip.crtc_id,
+					event->u.data.op.pg_flip.fb_id);
 			}
 			break;
 		}

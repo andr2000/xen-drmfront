@@ -389,7 +389,7 @@ static void xendrm_du_crtc_wait_page_flip(struct xendrm_du_crtc *du_crtc)
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 }
 
-void xendrm_du_crtc_on_page_flip(struct xendrm_du_crtc *du_crtc)
+void xendrm_du_crtc_on_page_flip(struct xendrm_du_crtc *du_crtc, uint32_t fb_id)
 {
 	struct drm_device *dev = du_crtc->crtc.dev;
 	unsigned long flags;
