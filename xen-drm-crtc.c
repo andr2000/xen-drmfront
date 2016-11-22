@@ -434,14 +434,16 @@ static int xendrm_crtc_set_config(struct drm_mode_set *set)
 			drm_mode_vrefresh(set->mode));
 		xendrm_du_crtc_timer_set_period(du_crtc,
 			msecs_to_jiffies(1000 / drm_mode_vrefresh(set->mode)));
-	}
-	ret = xendrm_du->front_funcs->mode_set(du_crtc, set->x, set->y,
-		set->fb->width, set->fb->height, set->fb->bits_per_pixel, set->fb->base.id);
-	if (ret < 0) {
-		DRM_ERROR("Failed to set configuration to BE, ret %d\n", ret);
-		/* if closing still try to do so on front side */
-		if (set->mode)
+		ret = xendrm_du->front_funcs->mode_set(du_crtc, set->x, set->y,
+			set->fb->width, set->fb->height, set->fb->bits_per_pixel, set->fb->base.id);
+		if (ret < 0) {
+			DRM_ERROR("Failed to set configuration to BE, ret %d\n", ret);
 			return ret;
+		}
+	} else {
+		ret = xendrm_du->front_funcs->mode_set(du_crtc, 0, 0, 0, 0, 0, 0);
+		if (ret < 0)
+			DRM_ERROR("Failed to set configuration to BE, ret %d\n", ret);
 	}
 	return drm_atomic_helper_set_config(set);
 }

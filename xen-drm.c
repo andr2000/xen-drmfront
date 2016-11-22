@@ -53,20 +53,22 @@ static int xendrm_dumb_create(struct drm_file *file_priv, struct drm_device *dev
 	struct drm_gem_cma_object *cma_obj;
 	int ret;
 
-	DRM_ERROR("%s\n", __FUNCTION__);
 	ret = drm_gem_cma_dumb_create(file_priv, dev, args);
+	DRM_ERROR("%s ret = %d\n", __FUNCTION__, ret);
 	if (ret < 0)
 		goto fail;
 	gem_obj = drm_gem_object_lookup(file_priv, args->handle);
+	DRM_ERROR("%s handle %x gem_obj %p\n", __FUNCTION__, args->handle, gem_obj);
 	if (!gem_obj) {
 		ret = -EINVAL;
 		goto fail_destroy;
 	}
 	drm_gem_object_unreference_unlocked(gem_obj);
 	cma_obj = to_drm_gem_cma_obj(gem_obj);
-	if (xendrm_du->front_funcs->dumb_create(
+	ret = xendrm_du->front_funcs->dumb_create(
 			xendrm_du->xdrv_info, args->handle, args->width,
-			args->height, args->bpp, args->size, cma_obj->vaddr) < 0)
+			args->height, args->bpp, args->size, cma_obj->vaddr);
+	if (ret < 0)
 		goto fail_destroy;
 	DRM_ERROR("%s width %d height %d bpp %d flags %d size %llu\n",
 		__FUNCTION__, args->width, args->height, args->bpp,
@@ -76,7 +78,7 @@ static int xendrm_dumb_create(struct drm_file *file_priv, struct drm_device *dev
 fail_destroy:
 	drm_gem_dumb_destroy(file_priv, dev, args->handle);
 fail:
-	DRM_ERROR("Failed to create dumb buffer");
+	DRM_ERROR("Failed to create dumb buffer, ret %d\n", ret);
 	return ret;
 }
 

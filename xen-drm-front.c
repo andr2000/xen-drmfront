@@ -424,6 +424,7 @@ static irqreturn_t xdrv_evtchnl_interrupt_ctrl(int irq, void *dev_id)
 		case XENDRM_OP_FB_DESTROY:
 		case XENDRM_OP_DUMB_CREATE:
 		case XENDRM_OP_DUMB_DESTROY:
+		case XENDRM_OP_SET_CONFIG:
 			channel->u.ctrl.resp_status = resp->u.data.status;
 			complete(&channel->u.ctrl.completion);
 			break;
@@ -846,6 +847,8 @@ static void xdrv_sh_buf_free_all(struct xdrv_info *drv_info)
 	struct list_head *pos, *q;
 
 	mutex_lock(&drv_info->io_generic_evt_lock);
+	if (!drv_info->dumb_buf)
+		goto out;
 	list_for_each_safe(pos, q, &drv_info->dumb_buf->list) {
 		struct xdrv_shared_buffer_info *buf;
 
@@ -855,6 +858,7 @@ static void xdrv_sh_buf_free_all(struct xdrv_info *drv_info)
 		if (drv_info->dumb_buf == buf)
 			drv_info->dumb_buf = NULL;
 	}
+out:
 	mutex_unlock(&drv_info->io_generic_evt_lock);
 }
 
