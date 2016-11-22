@@ -798,57 +798,6 @@ static int xdrv_cfg_card(struct xdrv_info *drv_info,
 	return 0;
 }
 
-static void xdrv_sh_buf_free_all(struct xdrv_info *drv_info);
-
-static void xdrv_remove_internal(struct xdrv_info *drv_info)
-{
-	ddrv_cleanup(drv_info);
-	xdrv_evtchnl_free_all(drv_info);
-	xdrv_sh_buf_free_all(drv_info);
-}
-
-static int xdrv_probe(struct xenbus_device *xb_dev,
-	const struct xenbus_device_id *id)
-{
-	struct xdrv_info *drv_info;
-	int ret;
-
-	drv_info = devm_kzalloc(&xb_dev->dev, sizeof(*drv_info), GFP_KERNEL);
-	if (!drv_info) {
-		ret = -ENOMEM;
-		goto fail;
-	}
-
-	xenbus_switch_state(xb_dev, XenbusStateInitialising);
-
-	drv_info->xb_dev = xb_dev;
-	spin_lock_init(&drv_info->io_lock);
-	mutex_init(&drv_info->mutex);
-	mutex_init(&drv_info->io_generic_evt_lock);
-	drv_info->ddrv_registered = false;
-	dev_set_drvdata(&xb_dev->dev, drv_info);
-	return 0;
-fail:
-	xenbus_dev_fatal(xb_dev, ret, "allocating device memory");
-	return ret;
-}
-
-static int xdrv_remove(struct xenbus_device *dev)
-{
-	struct xdrv_info *drv_info = dev_get_drvdata(&dev->dev);
-
-	mutex_lock(&drv_info->mutex);
-	xdrv_remove_internal(drv_info);
-	mutex_unlock(&drv_info->mutex);
-	xenbus_switch_state(dev, XenbusStateClosed);
-	return 0;
-}
-
-static int xdrv_resume(struct xenbus_device *dev)
-{
-	return 0;
-}
-
 static grant_ref_t xdrv_sh_buf_get_dir_start(
 	struct xdrv_shared_buffer_info *buf)
 {
@@ -1036,6 +985,55 @@ fail:
 		drv_info->dumb_buf = NULL;
 	xdrv_sh_buf_free(buf);
 	return NULL;
+}
+
+static void xdrv_remove_internal(struct xdrv_info *drv_info)
+{
+	ddrv_cleanup(drv_info);
+	xdrv_evtchnl_free_all(drv_info);
+	xdrv_sh_buf_free_all(drv_info);
+}
+
+static int xdrv_probe(struct xenbus_device *xb_dev,
+	const struct xenbus_device_id *id)
+{
+	struct xdrv_info *drv_info;
+	int ret;
+
+	drv_info = devm_kzalloc(&xb_dev->dev, sizeof(*drv_info), GFP_KERNEL);
+	if (!drv_info) {
+		ret = -ENOMEM;
+		goto fail;
+	}
+
+	xenbus_switch_state(xb_dev, XenbusStateInitialising);
+
+	drv_info->xb_dev = xb_dev;
+	spin_lock_init(&drv_info->io_lock);
+	mutex_init(&drv_info->mutex);
+	mutex_init(&drv_info->io_generic_evt_lock);
+	drv_info->ddrv_registered = false;
+	dev_set_drvdata(&xb_dev->dev, drv_info);
+	return 0;
+fail:
+	xenbus_dev_fatal(xb_dev, ret, "allocating device memory");
+	return ret;
+}
+
+static int xdrv_remove(struct xenbus_device *dev)
+{
+	struct xdrv_info *drv_info = dev_get_drvdata(&dev->dev);
+
+	mutex_lock(&drv_info->mutex);
+	xdrv_remove_internal(drv_info);
+	mutex_unlock(&drv_info->mutex);
+	xenbus_switch_state(dev, XenbusStateClosed);
+	return 0;
+}
+
+static int xdrv_resume(struct xenbus_device *dev)
+{
+	return 0;
 }
 
 static int xdrv_be_on_initwait(struct xdrv_info *drv_info)
