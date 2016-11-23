@@ -364,7 +364,7 @@ static int xendrm_du_crtc_do_page_flip(struct drm_crtc *crtc,
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 	xendrm_du = du_crtc->xendrm_du;
 	ret = xendrm_du->front_funcs->page_flip(
-		xendrm_du->xdrv_info, du_crtc->index, fb->base.id);
+		xendrm_du->xdrv_info, du_crtc->index, (uint64_t)fb);
 //	DRM_ERROR("%s =============================== ret %d\n", __FUNCTION__, ret);
 	if (ret < 0) {
 		spin_lock_irqsave(&dev->event_lock, flags);
@@ -407,7 +407,7 @@ static void xendrm_du_crtc_wait_page_flip(struct xendrm_du_crtc *du_crtc)
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 }
 
-void xendrm_du_crtc_on_page_flip(struct xendrm_du_crtc *du_crtc, uint32_t fb_id)
+void xendrm_du_crtc_on_page_flip(struct xendrm_du_crtc *du_crtc, uint64_t fb_cookie)
 {
 	struct drm_device *dev = du_crtc->crtc.dev;
 	unsigned long flags;
@@ -475,7 +475,7 @@ static int xendrm_crtc_set_config(struct drm_mode_set *set)
 		xendrm_du_crtc_timer_set_period(du_crtc, period,
 			XENDRM_EVT_TO_MS / jiffies_to_msecs(period));
 		ret = xendrm_du->front_funcs->mode_set(du_crtc, set->x, set->y,
-			set->fb->width, set->fb->height, set->fb->bits_per_pixel, set->fb->base.id);
+			set->fb->width, set->fb->height, set->fb->bits_per_pixel, (uint64_t)set->fb);
 		if (ret < 0) {
 			DRM_ERROR("Failed to set configuration to BE, ret %d\n", ret);
 			return ret;

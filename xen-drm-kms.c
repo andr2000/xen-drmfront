@@ -29,7 +29,7 @@ static void xendrm_du_fb_destroy(struct drm_framebuffer *fb)
 	struct xendrm_du_device *xendrm_du = fb->dev->dev_private;
 
 	DRM_ERROR("%s fb->base.id %d\n", __FUNCTION__, fb->base.id);
-	xendrm_du->front_funcs->fb_destroy(xendrm_du->xdrv_info, fb->base.id);
+	xendrm_du->front_funcs->fb_destroy(xendrm_du->xdrv_info, (uint64_t)fb);
 	drm_fb_cma_destroy(fb);
 }
 
@@ -50,7 +50,7 @@ xendrm_du_fb_create(struct drm_device *dev, struct drm_file *file_priv,
 	if (!IS_ERR_OR_NULL(fb)) {
 		/* FIXME: we take the first handle */
 		if (xendrm_du->front_funcs->fb_create(
-				xendrm_du->xdrv_info, mode_cmd->handles[0], fb->base.id,
+				xendrm_du->xdrv_info, mode_cmd->handles[0], (uint64_t)fb,
 				fb->width, fb->height, fb->pixel_format) < 0) {
 			drm_fb_cma_destroy(fb);
 			fb = NULL;

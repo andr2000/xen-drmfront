@@ -82,7 +82,7 @@ struct xdrv_evtchnl_info {
 
 struct xdrv_shared_buffer_info {
 	struct list_head list;
-	uint32_t handle;
+	uint64_t dumb_cookie;
 	int num_grefs;
 	grant_ref_t *grefs;
 	unsigned char *vdirectory;
@@ -135,12 +135,12 @@ static int drmif_to_kern_error(int drmif_err)
 static inline void xdrv_evtchnl_flush(
 		struct xdrv_evtchnl_info *channel);
 static struct xdrv_shared_buffer_info *xdrv_sh_buf_alloc(
-	struct xdrv_info *drv_info, uint32_t handle,
+	struct xdrv_info *drv_info, uint64_t dumb_cookie,
 	void *vbuffer, unsigned int buffer_size);
 static grant_ref_t xdrv_sh_buf_get_dir_start(
 	struct xdrv_shared_buffer_info *buf);
-static void xdrv_sh_buf_free_by_handle(struct xdrv_info *drv_info,
-	uint32_t handle);
+static void xdrv_sh_buf_free_by_cookie(struct xdrv_info *drv_info,
+	uint64_t dumb_cookie);
 
 static inline struct xendrm_req *ddrv_be_prepare_req(
 	struct xdrv_evtchnl_info *evtchnl, uint8_t operation)
@@ -181,7 +181,7 @@ static int ddrv_be_stream_do_io(struct xdrv_evtchnl_info *evtchnl,
 }
 
 int xendrm_front_mode_set(struct xendrm_du_crtc *du_crtc, uint32_t x, uint32_t y,
-	uint32_t width, uint32_t height, uint32_t bpp, uint32_t fb_id)
+	uint32_t width, uint32_t height, uint32_t bpp, uint64_t fb_cookie)
 
 {
 	struct xdrv_evtchnl_info *evtchnl;
@@ -202,13 +202,13 @@ int xendrm_front_mode_set(struct xendrm_du_crtc *du_crtc, uint32_t x, uint32_t y
 	req->u.data.op.set_config.width = width;
 	req->u.data.op.set_config.height = height;
 	req->u.data.op.set_config.bpp = bpp;
-	req->u.data.op.set_config.fb_id = fb_id;
+	req->u.data.op.set_config.fb_cookie = fb_cookie;
 	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
 	mutex_unlock(&drv_info->io_generic_evt_lock);
 	return ret;
 }
 
-int xendrm_front_dumb_create(struct xdrv_info *drv_info, uint32_t handle, uint32_t width,
+int xendrm_front_dumb_create(struct xdrv_info *drv_info, uint64_t dumb_cookie, uint32_t width,
 	uint32_t height, uint32_t bpp, uint64_t size, void *vaddr)
 {
 	struct xdrv_evtchnl_info *evtchnl;
@@ -221,7 +221,7 @@ int xendrm_front_dumb_create(struct xdrv_info *drv_info, uint32_t handle, uint32
 	if (unlikely(!evtchnl))
 		return -EIO;
 	mutex_lock(&drv_info->io_generic_evt_lock);
-	buf = xdrv_sh_buf_alloc(drv_info, handle, vaddr, size);
+	buf = xdrv_sh_buf_alloc(drv_info, dumb_cookie, vaddr, size);
 	if (!buf) {
 		mutex_unlock(&drv_info->io_generic_evt_lock);
 		return -ENOMEM;
@@ -230,7 +230,7 @@ int xendrm_front_dumb_create(struct xdrv_info *drv_info, uint32_t handle, uint32
 	req = ddrv_be_prepare_req(evtchnl, XENDRM_OP_DUMB_CREATE);
 	req->u.data.op.dumb_create.gref_directory_start =
 		xdrv_sh_buf_get_dir_start(buf);
-	req->u.data.op.dumb_create.handle = handle;
+	req->u.data.op.dumb_create.dumb_cookie = dumb_cookie;
 	req->u.data.op.dumb_create.width = width;
 	req->u.data.op.dumb_create.height = height;
 	req->u.data.op.dumb_create.bpp = bpp;
@@ -239,7 +239,7 @@ int xendrm_front_dumb_create(struct xdrv_info *drv_info, uint32_t handle, uint32
 	return ret;
 }
 
-int xendrm_front_dumb_destroy(struct xdrv_info *drv_info, uint32_t handle)
+int xendrm_front_dumb_destroy(struct xdrv_info *drv_info, uint64_t dumb_cookie)
 {
 	struct xdrv_evtchnl_info *evtchnl;
 	struct xendrm_req *req;
@@ -255,15 +255,15 @@ int xendrm_front_dumb_destroy(struct xdrv_info *drv_info, uint32_t handle)
 	spin_lock_irqsave(&drv_info->io_lock, flags);
 	req = ddrv_be_prepare_req(evtchnl, XENDRM_OP_DUMB_DESTROY);
 
-	req->u.data.op.dumb_destroy.handle = handle;
+	req->u.data.op.dumb_destroy.dumb_cookie = dumb_cookie;
 	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
-	xdrv_sh_buf_free_by_handle(drv_info, handle);
+	xdrv_sh_buf_free_by_cookie(drv_info, dumb_cookie);
 	mutex_unlock(&drv_info->io_generic_evt_lock);
 	return ret;
 }
 
 int xendrm_front_fb_create(struct xdrv_info *drv_info,
-	uint32_t handle, uint32_t fb_id, uint32_t width, uint32_t height,
+	uint64_t dumb_cookie, uint64_t fb_cookie, uint32_t width, uint32_t height,
 	uint32_t pixel_format)
 {
 	struct xdrv_evtchnl_info *evtchnl;
@@ -277,8 +277,8 @@ int xendrm_front_fb_create(struct xdrv_info *drv_info,
 	mutex_lock(&drv_info->io_generic_evt_lock);
 	spin_lock_irqsave(&drv_info->io_lock, flags);
 	req = ddrv_be_prepare_req(evtchnl, XENDRM_OP_FB_CREATE);
-	req->u.data.op.fb_create.handle = handle;
-	req->u.data.op.fb_create.fb_id = fb_id;
+	req->u.data.op.fb_create.dumb_cookie = dumb_cookie;
+	req->u.data.op.fb_create.fb_cookie = fb_cookie;
 	req->u.data.op.fb_create.width = width;
 	req->u.data.op.fb_create.height = height;
 	req->u.data.op.fb_create.pixel_format = pixel_format;
@@ -287,7 +287,7 @@ int xendrm_front_fb_create(struct xdrv_info *drv_info,
 	return ret;
 }
 
-int xendrm_front_fb_destroy(struct xdrv_info *drv_info, uint32_t fb_id)
+int xendrm_front_fb_destroy(struct xdrv_info *drv_info, uint64_t fb_cookie)
 {
 	struct xdrv_evtchnl_info *evtchnl;
 	struct xendrm_req *req;
@@ -300,13 +300,13 @@ int xendrm_front_fb_destroy(struct xdrv_info *drv_info, uint32_t fb_id)
 	mutex_lock(&drv_info->io_generic_evt_lock);
 	spin_lock_irqsave(&drv_info->io_lock, flags);
 	req = ddrv_be_prepare_req(evtchnl, XENDRM_OP_FB_DESTROY);
-	req->u.data.op.fb_destroy.fb_id = fb_id;
+	req->u.data.op.fb_destroy.fb_cookie = fb_cookie;
 	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
 	mutex_unlock(&drv_info->io_generic_evt_lock);
 	return ret;
 }
 
-int xendrm_front_page_flip(struct xdrv_info *drv_info, int crtc_idx, uint32_t fb_id)
+int xendrm_front_page_flip(struct xdrv_info *drv_info, int crtc_idx, uint64_t fb_cookie)
 {
 	struct xdrv_evtchnl_info *evtchnl;
 	struct xendrm_req *req;
@@ -320,7 +320,7 @@ int xendrm_front_page_flip(struct xdrv_info *drv_info, int crtc_idx, uint32_t fb
 	spin_lock_irqsave(&drv_info->io_lock, flags);
 	req = ddrv_be_prepare_req(evtchnl, XENDRM_OP_PG_FLIP);
 	req->u.data.op.pg_flip.crtc_idx = crtc_idx;
-	req->u.data.op.pg_flip.fb_id = fb_id;
+	req->u.data.op.pg_flip.fb_cookie = fb_cookie;
 	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
 	mutex_unlock(&drv_info->io_generic_evt_lock);
 	return ret;
@@ -480,7 +480,7 @@ static irqreturn_t xdrv_evtchnl_interrupt_evt(int irq, void *dev_id)
 				xendrm_front_funcs.on_page_flip(
 					drv_info->ddrv_pdev,
 					event->u.data.op.pg_flip.crtc_idx,
-					event->u.data.op.pg_flip.fb_id);
+					event->u.data.op.pg_flip.fb_cookie);
 			}
 			break;
 		}
@@ -822,8 +822,8 @@ static void xdrv_sh_buf_free(struct xdrv_shared_buffer_info *buf)
 	kfree(buf);
 }
 
-static void xdrv_sh_buf_free_by_handle(struct xdrv_info *drv_info,
-	uint32_t handle)
+static void xdrv_sh_buf_free_by_cookie(struct xdrv_info *drv_info,
+	uint64_t dumb_cookie)
 {
 	struct list_head *pos, *q;
 
@@ -831,7 +831,7 @@ static void xdrv_sh_buf_free_by_handle(struct xdrv_info *drv_info,
 		struct xdrv_shared_buffer_info *buf;
 
 		buf = list_entry(pos, struct xdrv_shared_buffer_info, list);
-		if (buf->handle == handle) {
+		if (buf->dumb_cookie == dumb_cookie) {
 			list_del(pos);
 			xdrv_sh_buf_free(buf);
 			if (drv_info->dumb_buf == buf)
@@ -946,7 +946,7 @@ int xdrv_sh_buf_alloc_buffers(struct xdrv_shared_buffer_info *buf,
 }
 
 static struct xdrv_shared_buffer_info *
-xdrv_sh_buf_alloc(struct xdrv_info *drv_info, uint32_t handle,
+xdrv_sh_buf_alloc(struct xdrv_info *drv_info, uint64_t dumb_cookie,
 	void *vbuffer, unsigned int buffer_size)
 {
 	struct xdrv_shared_buffer_info *buf;
@@ -962,7 +962,7 @@ xdrv_sh_buf_alloc(struct xdrv_info *drv_info, uint32_t handle,
 		INIT_LIST_HEAD(&buf->list);
 	}
 	buf->vbuffer = vbuffer;
-	buf->handle = handle;
+	buf->dumb_cookie = dumb_cookie;
 	/* TODO: use XC_PAGE_SIZE */
 	num_pages_vbuffer = DIV_ROUND_UP(buffer_size, PAGE_SIZE);
 	/* number of grefs a page can hold with respect to the

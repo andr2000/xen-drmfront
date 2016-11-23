@@ -103,13 +103,13 @@ void xendrm_gem_free_object(struct drm_gem_object *obj)
 }
 
 static void xendrm_on_page_flip(struct platform_device *pdev,
-	int crtc_idx, uint32_t fb_id)
+	int crtc_idx, uint64_t fb_cookie)
 {
 	struct xendrm_du_device *xendrm_du = platform_get_drvdata(pdev);
 
 	if (unlikely(crtc_idx >= xendrm_du->num_crtcs))
 		return;
-	xendrm_du_crtc_on_page_flip(&xendrm_du->crtcs[crtc_idx], fb_id);
+	xendrm_du_crtc_on_page_flip(&xendrm_du->crtcs[crtc_idx], fb_cookie);
 }
 
 static const struct file_operations xendrm_fops = {
