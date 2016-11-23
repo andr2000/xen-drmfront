@@ -1062,8 +1062,8 @@ static int xdrv_be_on_connected(struct xdrv_info *drv_info)
 
 static void xdrv_be_on_disconnected(struct xdrv_info *drv_info)
 {
-	xdrv_remove_internal(drv_info);
 	xdrv_evtchnl_set_state(drv_info, EVTCHNL_STATE_DISCONNECTED);
+	xdrv_remove_internal(drv_info);
 }
 
 static void xdrv_be_on_changed(struct xenbus_device *xb_dev,
