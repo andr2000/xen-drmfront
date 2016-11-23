@@ -50,6 +50,8 @@ struct xendrm_du_crtc {
 	struct timer_list timer_vblank;
 	spinlock_t timer_lock;
 	unsigned long timer_period;
+	int timer_pf_event_to_cnt;
+	int timer_pf_event_to;
 };
 
 int xendrm_du_crtc_create(struct xendrm_du_device *xendrm_du,

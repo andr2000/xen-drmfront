@@ -23,6 +23,9 @@
 #include "xen-drm.h"
 #include "xen-drm-front.h"
 
+/* timeout for page flip event reception */
+#define XENDRM_EVT_TO_MS	1000
+
 static void xendrm_du_dump_vblank_event(struct drm_pending_vblank_event *e)
 {
 	if (!e) {
@@ -263,6 +266,16 @@ static void xendrm_du_crtc_timer_start(struct xendrm_du_crtc *du_crtc)
 	spin_unlock_irqrestore(&du_crtc->timer_lock, flags);
 }
 
+static void xendrm_du_crtc_timer_pf_restart(struct xendrm_du_crtc *du_crtc)
+{
+	struct drm_device *dev = du_crtc->crtc.dev;
+	unsigned long flags;
+
+	spin_lock_irqsave(&dev->event_lock, flags);
+	du_crtc->timer_pf_event_to_cnt = du_crtc->timer_pf_event_to;
+	spin_unlock_irqrestore(&dev->event_lock, flags);
+}
+
 static void xendrm_du_crtc_timer_stop(struct xendrm_du_crtc *du_crtc)
 {
 	unsigned long flags;
@@ -282,12 +295,13 @@ static void xendrm_du_crtc_timer_create(struct xendrm_du_crtc *du_crtc)
 }
 
 static void xendrm_du_crtc_timer_set_period(struct xendrm_du_crtc *du_crtc,
-	unsigned long period)
+	unsigned long period, int evt_to)
 {
 	unsigned long flags;
 
 	spin_lock_irqsave(&du_crtc->timer_lock, flags);
 	du_crtc->timer_period = period;
+	du_crtc->timer_pf_event_to = evt_to;
 	spin_unlock_irqrestore(&du_crtc->timer_lock, flags);
 }
 
@@ -333,6 +347,7 @@ static int xendrm_du_crtc_do_page_flip(struct drm_crtc *crtc,
 		spin_unlock_irqrestore(&dev->event_lock, flags);
 		return -EBUSY;
 	}
+
 	/* FIXME this event is not yet fully initialized by the DRM core
 	 * so it cannot be used to send events to user space yet
 	 * there are 2 cases:
@@ -355,6 +370,7 @@ static int xendrm_du_crtc_do_page_flip(struct drm_crtc *crtc,
 		spin_unlock_irqrestore(&dev->event_lock, flags);
 		return ret;
 	}
+	xendrm_du_crtc_timer_pf_restart(du_crtc);
 	return drm_atomic_helper_page_flip(crtc, fb, event, drm_flags);
 }
 
@@ -412,13 +428,29 @@ void xendrm_du_crtc_on_page_flip(struct xendrm_du_crtc *du_crtc, uint32_t fb_id)
 static void xendrm_du_crtc_timer_callback(unsigned long data)
 {
 	struct xendrm_du_crtc *du_crtc = (struct xendrm_du_crtc *)data;
+	struct drm_device *dev = du_crtc->crtc.dev;
 	unsigned long flags;
 
-	DRM_DEBUG("%s\n", __FUNCTION__);
 	spin_lock_irqsave(&du_crtc->timer_lock, flags);
 	xendrm_du_crtc_timer_rearm(du_crtc);
 	spin_unlock_irqrestore(&du_crtc->timer_lock, flags);
 	drm_crtc_handle_vblank(&du_crtc->crtc);
+
+	/* check if we need to release a timed-out page flip event */
+	spin_lock_irqsave(&dev->event_lock, flags);
+	DRM_DEBUG("%s du_crtc->timer_pf_event_to_cnt %d\n",
+		__FUNCTION__, du_crtc->timer_pf_event_to_cnt);
+	if (likely(du_crtc->timer_pf_event_to_cnt)) {
+		du_crtc->timer_pf_event_to_cnt--;
+		if (unlikely(!du_crtc->timer_pf_event_to_cnt)) {
+			if (!du_crtc->pg_flip_flush_queued &&
+					!du_crtc->pg_flip_be_ntfy_fired) {
+				DRM_ERROR("Flip event timed-out, releasing\n");
+				xendrm_du_crtc_ntfy_page_flip_completed(du_crtc);
+			}
+		}
+	}
+	spin_unlock_irqrestore(&dev->event_lock, flags);
 }
 
 static int xendrm_crtc_set_config(struct drm_mode_set *set)
@@ -430,10 +462,14 @@ static int xendrm_crtc_set_config(struct drm_mode_set *set)
 
 	DRM_DEBUG("%s\n", __FUNCTION__);
 	if (set->mode) {
-		DRM_ERROR("%s vrefresh = %d\n", __FUNCTION__,
-			drm_mode_vrefresh(set->mode));
-		xendrm_du_crtc_timer_set_period(du_crtc,
-			msecs_to_jiffies(1000 / drm_mode_vrefresh(set->mode)));
+		int vrefresh;
+		unsigned long period;
+
+		vrefresh = drm_mode_vrefresh(set->mode);
+		DRM_ERROR("%s vrefresh, Hz = %d\n", __FUNCTION__, vrefresh);
+		period = msecs_to_jiffies(1000 / vrefresh);
+		xendrm_du_crtc_timer_set_period(du_crtc, period,
+			XENDRM_EVT_TO_MS / jiffies_to_msecs(period));
 		ret = xendrm_du->front_funcs->mode_set(du_crtc, set->x, set->y,
 			set->fb->width, set->fb->height, set->fb->bits_per_pixel, set->fb->base.id);
 		if (ret < 0) {
