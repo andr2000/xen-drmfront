@@ -28,7 +28,7 @@ static void xendrm_du_fb_destroy(struct drm_framebuffer *fb)
 {
 	struct xendrm_du_device *xendrm_du = fb->dev->dev_private;
 
-	DRM_ERROR("%s\n", __FUNCTION__);
+	DRM_ERROR("%s fb->base.id %d\n", __FUNCTION__, fb->base.id);
 	xendrm_du->front_funcs->fb_destroy(xendrm_du->xdrv_info, fb->base.id);
 	drm_fb_cma_destroy(fb);
 }

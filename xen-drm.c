@@ -65,6 +65,11 @@ static int xendrm_dumb_create(struct drm_file *file_priv, struct drm_device *dev
 	}
 	drm_gem_object_unreference_unlocked(gem_obj);
 	cma_obj = to_drm_gem_cma_obj(gem_obj);
+	{
+		static uint8_t col = 0x1f;
+		memset(cma_obj->vaddr, col, args->size);
+		col += 0x7f;
+	}
 	ret = xendrm_du->front_funcs->dumb_create(
 			xendrm_du->xdrv_info, args->handle, args->width,
 			args->height, args->bpp, args->size, cma_obj->vaddr);

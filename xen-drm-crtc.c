@@ -28,12 +28,14 @@
 
 static void xendrm_du_dump_vblank_event(struct drm_pending_vblank_event *e)
 {
+#if 0
 	if (!e) {
 		DRM_ERROR("NO EVENT =================================\n");
 		return;
 	}
 	DRM_ERROR("================================= EVENT %p type %d pipe %d\n",
 		e, e->event.base.type, e->pipe);
+#endif
 }
 
 static inline struct xendrm_du_connector *
@@ -336,7 +338,7 @@ static int xendrm_du_crtc_do_page_flip(struct drm_crtc *crtc,
 	unsigned long flags;
 	int ret;
 
-	DRM_ERROR("%s =============================== start\n", __FUNCTION__);
+//	DRM_ERROR("%s =============================== start\n", __FUNCTION__);
 	xendrm_du_dump_vblank_event(event);
 	spin_lock_irqsave(&dev->event_lock, flags);
 	if (du_crtc->pg_flip_event) {
@@ -363,7 +365,7 @@ static int xendrm_du_crtc_do_page_flip(struct drm_crtc *crtc,
 	xendrm_du = du_crtc->xendrm_du;
 	ret = xendrm_du->front_funcs->page_flip(
 		xendrm_du->xdrv_info, du_crtc->index, fb->base.id);
-	DRM_ERROR("%s =============================== ret %d\n", __FUNCTION__, ret);
+//	DRM_ERROR("%s =============================== ret %d\n", __FUNCTION__, ret);
 	if (ret < 0) {
 		spin_lock_irqsave(&dev->event_lock, flags);
 		du_crtc->pg_flip_event = NULL;
@@ -379,7 +381,7 @@ static void xendrm_du_crtc_ntfy_page_flip_completed(struct xendrm_du_crtc *du_cr
 {
 	struct drm_device *dev = du_crtc->crtc.dev;
 
-	DRM_ERROR("%s ====================================== \n", __FUNCTION__);
+//	DRM_ERROR("%s ====================================== \n", __FUNCTION__);
 	dev = du_crtc->xendrm_du->ddev;
 	if (du_crtc->pg_flip_event) {
 		xendrm_du_dump_vblank_event(du_crtc->pg_flip_event);
@@ -410,7 +412,7 @@ void xendrm_du_crtc_on_page_flip(struct xendrm_du_crtc *du_crtc, uint32_t fb_id)
 	struct drm_device *dev = du_crtc->crtc.dev;
 	unsigned long flags;
 
-	DRM_ERROR("%s =============================== EVENT\n", __FUNCTION__);
+//	DRM_ERROR("%s =============================== EVENT\n", __FUNCTION__);
 	spin_lock_irqsave(&dev->event_lock, flags);
 	/* are we delivering faster than atomic_flush happens?
 	 * if so, then null pg_flip_event and atomic_flush will anyways
@@ -438,8 +440,10 @@ static void xendrm_du_crtc_timer_callback(unsigned long data)
 
 	/* check if we need to release a timed-out page flip event */
 	spin_lock_irqsave(&dev->event_lock, flags);
+#if 0
 	DRM_DEBUG("%s du_crtc->timer_pf_event_to_cnt %d\n",
 		__FUNCTION__, du_crtc->timer_pf_event_to_cnt);
+#endif
 	if (likely(du_crtc->timer_pf_event_to_cnt)) {
 		du_crtc->timer_pf_event_to_cnt--;
 		if (unlikely(!du_crtc->timer_pf_event_to_cnt)) {
@@ -518,7 +522,7 @@ static void xendrm_du_crtc_atomic_flush(struct drm_crtc *crtc,
 	struct drm_pending_vblank_event *event = crtc->state->event;
 	struct drm_device *dev = crtc->dev;
 
-	DRM_DEBUG("%s\n", __FUNCTION__);
+//	DRM_DEBUG("%s\n", __FUNCTION__);
 	if (event) {
 		unsigned long flags;
 
