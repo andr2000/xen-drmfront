@@ -28,7 +28,6 @@ struct xendrm_cfg_connector;
 struct xendrm_du_connector {
 	struct drm_connector base;
 	int width, height;
-	int xen_id;
 };
 
 struct xendrm_du_crtc {

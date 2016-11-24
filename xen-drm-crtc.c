@@ -154,7 +154,6 @@ int xendrm_du_connector_create(struct xendrm_du_device *xendrm_du,
 
 	du_crtc->connector.width = cfg->width;
 	du_crtc->connector.height = cfg->height;
-	du_crtc->connector.xen_id = cfg->id;
 	ret = drm_connector_init(xendrm_du->ddev, connector,
 		&xendrm_du_drm_connector_funcs, DRM_MODE_CONNECTOR_VIRTUAL);
 	if (ret < 0)

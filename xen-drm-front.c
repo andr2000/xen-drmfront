@@ -180,8 +180,9 @@ static int ddrv_be_stream_do_io(struct xdrv_evtchnl_info *evtchnl,
 	return drmif_to_kern_error(evtchnl->u.ctrl.resp_status);
 }
 
-int xendrm_front_mode_set(struct xendrm_du_crtc *du_crtc, uint32_t x, uint32_t y,
-	uint32_t width, uint32_t height, uint32_t bpp, uint64_t fb_cookie)
+int xendrm_front_mode_set(struct xendrm_du_crtc *du_crtc, uint32_t x,
+	uint32_t y, uint32_t width, uint32_t height, uint32_t bpp,
+	uint64_t fb_cookie)
 
 {
 	struct xdrv_evtchnl_info *evtchnl;
@@ -208,8 +209,9 @@ int xendrm_front_mode_set(struct xendrm_du_crtc *du_crtc, uint32_t x, uint32_t y
 	return ret;
 }
 
-int xendrm_front_dumb_create(struct xdrv_info *drv_info, uint64_t dumb_cookie, uint32_t width,
-	uint32_t height, uint32_t bpp, uint64_t size, void *vaddr)
+int xendrm_front_dumb_create(struct xdrv_info *drv_info, uint64_t dumb_cookie,
+	uint32_t width, uint32_t height, uint32_t bpp, uint64_t size,
+	void *vaddr)
 {
 	struct xdrv_evtchnl_info *evtchnl;
 	struct xdrv_shared_buffer_info *buf;
@@ -263,8 +265,8 @@ int xendrm_front_dumb_destroy(struct xdrv_info *drv_info, uint64_t dumb_cookie)
 }
 
 int xendrm_front_fb_create(struct xdrv_info *drv_info,
-	uint64_t dumb_cookie, uint64_t fb_cookie, uint32_t width, uint32_t height,
-	uint32_t pixel_format)
+	uint64_t dumb_cookie, uint64_t fb_cookie, uint32_t width,
+	uint32_t height, uint32_t pixel_format)
 {
 	struct xdrv_evtchnl_info *evtchnl;
 	struct xendrm_req *req;
@@ -306,7 +308,8 @@ int xendrm_front_fb_destroy(struct xdrv_info *drv_info, uint64_t fb_cookie)
 	return ret;
 }
 
-int xendrm_front_page_flip(struct xdrv_info *drv_info, int crtc_idx, uint64_t fb_cookie)
+int xendrm_front_page_flip(struct xdrv_info *drv_info, int crtc_idx,
+	uint64_t fb_cookie)
 {
 	struct xdrv_evtchnl_info *evtchnl;
 	struct xendrm_req *req;
@@ -440,7 +443,8 @@ static irqreturn_t xdrv_evtchnl_interrupt_ctrl(int irq, void *dev_id)
 	if (i != channel->u.ctrl.ring.req_prod_pvt) {
 		int more_to_do;
 
-		RING_FINAL_CHECK_FOR_RESPONSES(&channel->u.ctrl.ring, more_to_do);
+		RING_FINAL_CHECK_FOR_RESPONSES(&channel->u.ctrl.ring,
+			more_to_do);
 		if (more_to_do)
 			goto again;
 	} else
@@ -727,7 +731,7 @@ static int xdrv_cfg_connector(struct xdrv_info *drv_info,
 	struct xendrm_cfg_connector *connector,
 	const char *path, int index)
 {
-	char *str, *connector_path;
+	char *connector_path;
 	int ret;
 
 	connector_path = devm_kasprintf(&drv_info->xb_dev->dev,
@@ -735,21 +739,8 @@ static int xdrv_cfg_connector(struct xdrv_info *drv_info,
 	if (!connector_path)
 		return -ENOMEM;
 	connector->xenstore_path = connector_path;
-	str = xenbus_read(XBT_NIL, connector_path,
-		XENDRM_FIELD_TYPE, NULL);
-	if (!IS_ERR(str)) {
-		strncpy(connector->type, str, sizeof(connector->type));
-		kfree(str);
-	}
-	if (xenbus_scanf(XBT_NIL, connector_path,
-			XENDRM_FIELD_ID, "%d", &connector->id) < 0) {
-		connector->id = 0;
-		ret = -EINVAL;
-		LOG0("Wrong connector ID");
-		goto fail;
-	}
 	if (xenbus_scanf(XBT_NIL, connector_path, XENDRM_FIELD_RESOLUTION,
-			"%d" XENDRM_LIST_SEPARATOR "%d",
+			"%d" XENDRM_RESOLUTION_SEPARATOR "%d",
 			&connector->width, &connector->height) < 0) {
 		connector->width = 0;
 		connector->height = 0;
@@ -757,9 +748,8 @@ static int xdrv_cfg_connector(struct xdrv_info *drv_info,
 		LOG0("Wrong connector resolution");
 		goto fail;
 	}
-	LOG0("Connector %s: id %d, type %s, resolution %dx%d",
-		connector_path, connector->id, connector->type,
-		connector->width, connector->height);
+	LOG0("Connector %s: resolution %dx%d",
+		connector_path, connector->width, connector->height);
 	ret = 0;
 fail:
 	return -ret;

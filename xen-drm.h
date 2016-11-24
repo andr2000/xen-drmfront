@@ -37,8 +37,6 @@ struct xendrm_du_device {
 };
 
 struct xendrm_cfg_connector {
-	char type[32];
-	int id;
 	int width;
 	int height;
 	char *xenstore_path;
