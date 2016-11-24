@@ -4,4 +4,5 @@ so fdif.h, kbdif.h and drmif.h use something generic.
 3. fbdev emulation
 4. Handle du_crtc->pg_flip_flush_queued/du_crtc->pg_flip_be_ntfy_fired
 simpler
+5. noa all spin_lock must be irqsave/restore
 
