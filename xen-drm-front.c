@@ -31,7 +31,8 @@
 #include <xen/events.h>
 #include <xen/grant_table.h>
 #include <xen/interface/io/ring.h>
-#include <xen/interface/io/drmif_linux.h>
+
+#include "displif.h"
 
 #include "xen-drm.h"
 #include "xen-drm-front.h"

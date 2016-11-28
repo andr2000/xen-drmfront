@@ -1,3 +1,0 @@
-[submodule "xen"]
-	path = xen
-	url = git@github.com:andr2000/xen-drmif.git
