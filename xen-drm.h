@@ -25,11 +25,11 @@
 
 #define XENDRM_DU_MAX_CRTCS	4
 
-struct xendrm_front_funcs;
+struct xendispl_front_funcs;
 
 struct xendrm_du_device {
 	struct xdrv_info *xdrv_info;
-	struct xendrm_front_funcs *front_funcs;
+	struct xendispl_front_funcs *front_funcs;
 	struct drm_device *ddev;
 	int num_crtcs;
 	struct xendrm_plat_data *platdata;
@@ -51,7 +51,7 @@ struct xendrm_plat_data {
 };
 
 int xendrm_probe(struct platform_device *pdev,
-	struct xendrm_front_funcs *xendrm_front_funcs);
+	struct xendispl_front_funcs *xendrm_front_funcs);
 int xendrm_remove(struct platform_device *pdev);
 
 #endif /* __XEN_DRM_H*/

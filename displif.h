@@ -30,8 +30,8 @@
 #ifndef __XEN_PUBLIC_IO_DISPLIF_H__
 #define __XEN_PUBLIC_IO_DISPLIF_H__
 
-#include "ring.h"
-#include "../grant_table.h"
+#include <xen/grant_table.h>
+#include <xen/interface/io/ring.h>
 
 /******************************************************************************
  * Main features provided by the protocol
@@ -662,12 +662,10 @@ DEFINE_RING_TYPES(xen_displif, struct xendispl_req, struct xendispl_resp);
  * for either each event, group of events or none.
  */
 
-union xendispl_event_page {
-    struct {
-        uint32_t in_cons;
-        uint32_t in_prod;
-    } ring;
-    uint8_t padding[32];
+struct xendispl_event_page {
+    uint32_t in_cons;
+    uint32_t in_prod;
+    uint8_t padding[60];
 };
 
 #define XENDISPL_IN_RING_OFFS (sizeof(struct xendispl_event_page))

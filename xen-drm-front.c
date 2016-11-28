@@ -38,12 +38,17 @@
 #include "xen-drm-front.h"
 #include "xen-drm-logs.h"
 
+#ifndef XC_PAGE_SIZE
+#define XC_PAGE_SIZE		PAGE_SIZE
+#warning "XC_PAGE_SIZE is not defined, assuming PAGE_SIZE"
+#endif
+
 #define GRANT_INVALID_REF	0
 /* timeout in ms to wait for backend to respond */
 #define VDRM_WAIT_BACK_MS	5000
 
-/* all operations which are not CRTC centris use this ctrl event channel,
- * e.g. fb_create/destroy which belong to a DRM device, not to a CRTC
+/* all operations which are not connector oriented use this ctrl event channel,
+ * e.g. fb_attach/destroy which belong to a DRM device, not to a CRTC
  */
 #define GENERIC_OP_EVT_CHNL	0
 
@@ -68,7 +73,7 @@ struct xdrv_evtchnl_info {
 	enum xdrv_evtchnl_type type;
 	union {
 		struct {
-			struct xen_drmif_front_ring ring;
+			struct xen_displif_front_ring ring;
 			struct completion completion;
 			/* latest response status and id */
 			int resp_status;
@@ -76,7 +81,7 @@ struct xdrv_evtchnl_info {
 			uint16_t req_next_id;
 		} ctrl;
 		struct {
-			struct xendrm_event_page *page;
+			struct xendispl_event_page *page;
 		} evt;
 	} u;
 };
@@ -119,8 +124,8 @@ struct DRMIF_TO_KERN_ERROR {
 };
 
 static struct DRMIF_TO_KERN_ERROR drmif_kern_error_codes[] = {
-	{ .drmif = XENDRM_RSP_OKAY,     .kern = 0 },
-	{ .drmif = XENDRM_RSP_ERROR,    .kern = EIO },
+	{ .drmif = XENDISPL_RSP_OKAY,     .kern = 0 },
+	{ .drmif = XENDISPL_RSP_ERROR,    .kern = EIO },
 };
 
 static int drmif_to_kern_error(int drmif_err)
@@ -143,16 +148,16 @@ static grant_ref_t xdrv_sh_buf_get_dir_start(
 static void xdrv_sh_buf_free_by_cookie(struct xdrv_info *drv_info,
 	uint64_t dumb_cookie);
 
-static inline struct xendrm_req *ddrv_be_prepare_req(
+static inline struct xendispl_req *ddrv_be_prepare_req(
 	struct xdrv_evtchnl_info *evtchnl, uint8_t operation)
 {
-	struct xendrm_req *req;
+	struct xendispl_req *req;
 
 	req = RING_GET_REQUEST(&evtchnl->u.ctrl.ring,
 		evtchnl->u.ctrl.ring.req_prod_pvt);
-	req->u.data.operation = operation;
-	req->u.data.id = evtchnl->u.ctrl.req_next_id++;
-	evtchnl->u.ctrl.resp_id = req->u.data.id;
+	req->operation = operation;
+	req->id = evtchnl->u.ctrl.req_next_id++;
+	evtchnl->u.ctrl.resp_id = req->id;
 	return req;
 }
 
@@ -160,7 +165,7 @@ static inline struct xendrm_req *ddrv_be_prepare_req(
  * This function will release it
  */
 static int ddrv_be_stream_do_io(struct xdrv_evtchnl_info *evtchnl,
-	struct xendrm_req *req, unsigned long flags)
+	struct xendispl_req *req, unsigned long flags)
 {
 	int ret;
 
@@ -181,14 +186,14 @@ static int ddrv_be_stream_do_io(struct xdrv_evtchnl_info *evtchnl,
 	return drmif_to_kern_error(evtchnl->u.ctrl.resp_status);
 }
 
-int xendrm_front_mode_set(struct xendrm_du_crtc *du_crtc, uint32_t x,
+int xendispl_front_mode_set(struct xendrm_du_crtc *du_crtc, uint32_t x,
 	uint32_t y, uint32_t width, uint32_t height, uint32_t bpp,
 	uint64_t fb_cookie)
 
 {
 	struct xdrv_evtchnl_info *evtchnl;
 	struct xdrv_info *drv_info;
-	struct xendrm_req *req;
+	struct xendispl_req *req;
 	unsigned long flags;
 	int ret;
 
@@ -198,25 +203,25 @@ int xendrm_front_mode_set(struct xendrm_du_crtc *du_crtc, uint32_t x,
 		return -EIO;
 	mutex_lock(&drv_info->io_generic_evt_lock);
 	spin_lock_irqsave(&drv_info->io_lock, flags);
-	req = ddrv_be_prepare_req(evtchnl, XENDRM_OP_SET_CONFIG);
-	req->u.data.op.set_config.x = x;
-	req->u.data.op.set_config.y = y;
-	req->u.data.op.set_config.width = width;
-	req->u.data.op.set_config.height = height;
-	req->u.data.op.set_config.bpp = bpp;
-	req->u.data.op.set_config.fb_cookie = fb_cookie;
+	req = ddrv_be_prepare_req(evtchnl, XENDISPL_OP_SET_CONFIG);
+	req->op.set_config.x = x;
+	req->op.set_config.y = y;
+	req->op.set_config.width = width;
+	req->op.set_config.height = height;
+	req->op.set_config.bpp = bpp;
+	req->op.set_config.fb_cookie = fb_cookie;
 	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
 	mutex_unlock(&drv_info->io_generic_evt_lock);
 	return ret;
 }
 
-int xendrm_front_dumb_create(struct xdrv_info *drv_info, uint64_t dumb_cookie,
+int xendispl_front_dbuf_create(struct xdrv_info *drv_info, uint64_t dumb_cookie,
 	uint32_t width, uint32_t height, uint32_t bpp, uint64_t size,
 	void *vaddr)
 {
 	struct xdrv_evtchnl_info *evtchnl;
 	struct xdrv_shared_buffer_info *buf;
-	struct xendrm_req *req;
+	struct xendispl_req *req;
 	unsigned long flags;
 	int ret;
 
@@ -230,22 +235,23 @@ int xendrm_front_dumb_create(struct xdrv_info *drv_info, uint64_t dumb_cookie,
 		return -ENOMEM;
 	}
 	spin_lock_irqsave(&drv_info->io_lock, flags);
-	req = ddrv_be_prepare_req(evtchnl, XENDRM_OP_DUMB_CREATE);
-	req->u.data.op.dumb_create.gref_directory_start =
+	req = ddrv_be_prepare_req(evtchnl, XENDISPL_OP_DBUF_CREATE);
+	req->op.dbuf_create.gref_directory_start =
 		xdrv_sh_buf_get_dir_start(buf);
-	req->u.data.op.dumb_create.dumb_cookie = dumb_cookie;
-	req->u.data.op.dumb_create.width = width;
-	req->u.data.op.dumb_create.height = height;
-	req->u.data.op.dumb_create.bpp = bpp;
+	req->op.dbuf_create.buffer_sz = size;
+	req->op.dbuf_create.dbuf_cookie = dumb_cookie;
+	req->op.dbuf_create.width = width;
+	req->op.dbuf_create.height = height;
+	req->op.dbuf_create.bpp = bpp;
 	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
 	mutex_unlock(&drv_info->io_generic_evt_lock);
 	return ret;
 }
 
-int xendrm_front_dumb_destroy(struct xdrv_info *drv_info, uint64_t dumb_cookie)
+int xendispl_front_dbuf_destroy(struct xdrv_info *drv_info, uint64_t dumb_cookie)
 {
 	struct xdrv_evtchnl_info *evtchnl;
-	struct xendrm_req *req;
+	struct xendispl_req *req;
 	unsigned long flags;
 	int ret;
 
@@ -256,21 +262,21 @@ int xendrm_front_dumb_destroy(struct xdrv_info *drv_info, uint64_t dumb_cookie)
 		return -EIO;
 	}
 	spin_lock_irqsave(&drv_info->io_lock, flags);
-	req = ddrv_be_prepare_req(evtchnl, XENDRM_OP_DUMB_DESTROY);
+	req = ddrv_be_prepare_req(evtchnl, XENDISPL_OP_DBUF_DESTROY);
 
-	req->u.data.op.dumb_destroy.dumb_cookie = dumb_cookie;
+	req->op.dbuf_destroy.dbuf_cookie = dumb_cookie;
 	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
 	xdrv_sh_buf_free_by_cookie(drv_info, dumb_cookie);
 	mutex_unlock(&drv_info->io_generic_evt_lock);
 	return ret;
 }
 
-int xendrm_front_fb_create(struct xdrv_info *drv_info,
+int xendispl_front_fb_attach(struct xdrv_info *drv_info,
 	uint64_t dumb_cookie, uint64_t fb_cookie, uint32_t width,
 	uint32_t height, uint32_t pixel_format)
 {
 	struct xdrv_evtchnl_info *evtchnl;
-	struct xendrm_req *req;
+	struct xendispl_req *req;
 	unsigned long flags;
 	int ret;
 
@@ -279,21 +285,21 @@ int xendrm_front_fb_create(struct xdrv_info *drv_info,
 		return -EIO;
 	mutex_lock(&drv_info->io_generic_evt_lock);
 	spin_lock_irqsave(&drv_info->io_lock, flags);
-	req = ddrv_be_prepare_req(evtchnl, XENDRM_OP_FB_CREATE);
-	req->u.data.op.fb_create.dumb_cookie = dumb_cookie;
-	req->u.data.op.fb_create.fb_cookie = fb_cookie;
-	req->u.data.op.fb_create.width = width;
-	req->u.data.op.fb_create.height = height;
-	req->u.data.op.fb_create.pixel_format = pixel_format;
+	req = ddrv_be_prepare_req(evtchnl, XENDISPL_OP_FB_ATTACH);
+	req->op.fb_attach.dbuf_cookie = dumb_cookie;
+	req->op.fb_attach.fb_cookie = fb_cookie;
+	req->op.fb_attach.width = width;
+	req->op.fb_attach.height = height;
+	req->op.fb_attach.pixel_format = pixel_format;
 	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
 	mutex_unlock(&drv_info->io_generic_evt_lock);
 	return ret;
 }
 
-int xendrm_front_fb_destroy(struct xdrv_info *drv_info, uint64_t fb_cookie)
+int xendispl_front_fb_detach(struct xdrv_info *drv_info, uint64_t fb_cookie)
 {
 	struct xdrv_evtchnl_info *evtchnl;
-	struct xendrm_req *req;
+	struct xendispl_req *req;
 	unsigned long flags;
 	int ret;
 
@@ -302,18 +308,18 @@ int xendrm_front_fb_destroy(struct xdrv_info *drv_info, uint64_t fb_cookie)
 		return -EIO;
 	mutex_lock(&drv_info->io_generic_evt_lock);
 	spin_lock_irqsave(&drv_info->io_lock, flags);
-	req = ddrv_be_prepare_req(evtchnl, XENDRM_OP_FB_DESTROY);
-	req->u.data.op.fb_destroy.fb_cookie = fb_cookie;
+	req = ddrv_be_prepare_req(evtchnl, XENDISPL_OP_FB_DETACH);
+	req->op.fb_detach.fb_cookie = fb_cookie;
 	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
 	mutex_unlock(&drv_info->io_generic_evt_lock);
 	return ret;
 }
 
-int xendrm_front_page_flip(struct xdrv_info *drv_info, int crtc_idx,
+int xendispl_front_page_flip(struct xdrv_info *drv_info, int crtc_idx,
 	uint64_t fb_cookie)
 {
 	struct xdrv_evtchnl_info *evtchnl;
-	struct xendrm_req *req;
+	struct xendispl_req *req;
 	unsigned long flags;
 	int ret;
 
@@ -322,26 +328,26 @@ int xendrm_front_page_flip(struct xdrv_info *drv_info, int crtc_idx,
 	evtchnl = &drv_info->evt_pairs[crtc_idx].ctrl;
 	mutex_lock(&drv_info->io_generic_evt_lock);
 	spin_lock_irqsave(&drv_info->io_lock, flags);
-	req = ddrv_be_prepare_req(evtchnl, XENDRM_OP_PG_FLIP);
-	req->u.data.op.pg_flip.crtc_idx = crtc_idx;
-	req->u.data.op.pg_flip.fb_cookie = fb_cookie;
+	req = ddrv_be_prepare_req(evtchnl, XENDISPL_OP_PG_FLIP);
+	req->op.pg_flip.conn_idx = crtc_idx;
+	req->op.pg_flip.fb_cookie = fb_cookie;
 	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
 	mutex_unlock(&drv_info->io_generic_evt_lock);
 	return ret;
 }
 
-static struct xendrm_front_funcs xendrm_front_funcs = {
-	.mode_set = xendrm_front_mode_set,
-	.dumb_create = xendrm_front_dumb_create,
-	.dumb_destroy = xendrm_front_dumb_destroy,
-	.fb_create = xendrm_front_fb_create,
-	.fb_destroy = xendrm_front_fb_destroy,
-	.page_flip = xendrm_front_page_flip,
+static struct xendispl_front_funcs xendispl_front_funcs = {
+	.mode_set = xendispl_front_mode_set,
+	.dbuf_create = xendispl_front_dbuf_create,
+	.dbuf_destroy = xendispl_front_dbuf_destroy,
+	.fb_attach = xendispl_front_fb_attach,
+	.fb_detach = xendispl_front_fb_detach,
+	.page_flip = xendispl_front_page_flip,
 };
 
 static int ddrv_probe(struct platform_device *pdev)
 {
-	return xendrm_probe(pdev, &xendrm_front_funcs);
+	return xendrm_probe(pdev, &xendispl_front_funcs);
 }
 
 static int ddrv_remove(struct platform_device *pdev)
@@ -350,7 +356,7 @@ static int ddrv_remove(struct platform_device *pdev)
 }
 
 struct platform_device_info ddrv_platform_info = {
-	.name = XENDRM_DRIVER_NAME,
+	.name = XENDISPL_DRIVER_NAME,
 	.id = 0,
 	.num_res = 0,
 	.dma_mask = DMA_BIT_MASK(32),
@@ -360,7 +366,7 @@ static struct platform_driver ddrv_info = {
 	.probe		= ddrv_probe,
 	.remove		= ddrv_remove,
 	.driver		= {
-		.name	= XENDRM_DRIVER_NAME,
+		.name	= XENDISPL_DRIVER_NAME,
 	},
 };
 
@@ -405,7 +411,7 @@ static irqreturn_t xdrv_evtchnl_interrupt_ctrl(int irq, void *dev_id)
 {
 	struct xdrv_evtchnl_info *channel = dev_id;
 	struct xdrv_info *drv_info = channel->drv_info;
-	struct xendrm_resp *resp;
+	struct xendispl_resp *resp;
 	RING_IDX i, rp;
 	unsigned long flags;
 
@@ -419,22 +425,22 @@ static irqreturn_t xdrv_evtchnl_interrupt_ctrl(int irq, void *dev_id)
 
 	for (i = channel->u.ctrl.ring.rsp_cons; i != rp; i++) {
 		resp = RING_GET_RESPONSE(&channel->u.ctrl.ring, i);
-		if (resp->u.data.id != channel->u.ctrl.resp_id)
+		if (resp->id != channel->u.ctrl.resp_id)
 			continue;
-		switch (resp->u.data.operation) {
-		case XENDRM_OP_PG_FLIP:
-		case XENDRM_OP_FB_CREATE:
-		case XENDRM_OP_FB_DESTROY:
-		case XENDRM_OP_DUMB_CREATE:
-		case XENDRM_OP_DUMB_DESTROY:
-		case XENDRM_OP_SET_CONFIG:
-			channel->u.ctrl.resp_status = resp->u.data.status;
+		switch (resp->operation) {
+		case XENDISPL_OP_PG_FLIP:
+		case XENDISPL_OP_FB_ATTACH:
+		case XENDISPL_OP_FB_DETACH:
+		case XENDISPL_OP_DBUF_CREATE:
+		case XENDISPL_OP_DBUF_DESTROY:
+		case XENDISPL_OP_SET_CONFIG:
+			channel->u.ctrl.resp_status = resp->status;
 			complete(&channel->u.ctrl.completion);
 			break;
 		default:
 			dev_err(&drv_info->xb_dev->dev,
 				"Operation %d is not supported",
-				resp->u.data.operation);
+				resp->operation);
 			break;
 		}
 	}
@@ -460,7 +466,7 @@ static irqreturn_t xdrv_evtchnl_interrupt_evt(int irq, void *dev_id)
 {
 	struct xdrv_evtchnl_info *channel = dev_id;
 	struct xdrv_info *drv_info = channel->drv_info;
-	struct xendrm_event_page *page = channel->u.evt.page;
+	struct xendispl_event_page *page = channel->u.evt.page;
 	uint32_t cons, prod;
 	unsigned long flags;
 
@@ -469,30 +475,30 @@ static irqreturn_t xdrv_evtchnl_interrupt_evt(int irq, void *dev_id)
 	if (unlikely(channel->state != EVTCHNL_STATE_CONNECTED))
 		goto out;
 
-	prod = page->u.ring.in_prod;
-	if (prod == page->u.ring.in_cons)
+	prod = page->in_prod;
+	if (prod == page->in_cons)
 		goto out;
 	/* ensure we see ring contents up to prod */
 	rmb();
-	for (cons = page->u.ring.in_cons; cons != prod; cons++) {
-		struct xendrm_evt *event;
+	for (cons = page->in_cons; cons != prod; cons++) {
+		struct xendispl_evt *event;
 
-		event = &XENDRM_IN_RING_REF(page, cons);
+		event = &XENDISPL_IN_RING_REF(page, cons);
 //		LOG0("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx got event, type %d", event->u.data.type);
-		switch (event->u.data.type) {
-		case XENDRM_EVT_PG_FLIP:
-			if (likely(xendrm_front_funcs.on_page_flip)) {
-				xendrm_front_funcs.on_page_flip(
+		switch (event->type) {
+		case XENDISPL_EVT_PG_FLIP:
+			if (likely(xendispl_front_funcs.on_page_flip)) {
+				xendispl_front_funcs.on_page_flip(
 					drv_info->ddrv_pdev,
-					event->u.data.op.pg_flip.crtc_idx,
-					event->u.data.op.pg_flip.fb_cookie);
+					event->op.pg_flip.conn_idx,
+					event->op.pg_flip.fb_cookie);
 			}
 			break;
 		}
 	}
 	/* ensure we got ring contents */
 	mb();
-	page->u.ring.in_cons = cons;
+	page->in_cons = cons;
 	notify_remote_via_irq(channel->irq);
 
 out:
@@ -514,7 +520,7 @@ static void xdrv_evtchnl_free(struct xdrv_info *drv_info,
 	channel->state = EVTCHNL_STATE_DISCONNECTED;
 	if (channel->type == EVTCHNL_TYPE_CTRL) {
 		/* release all who still waits for response if any */
-		channel->u.ctrl.resp_status = -XENDRM_RSP_ERROR;
+		channel->u.ctrl.resp_status = -XENDISPL_RSP_ERROR;
 		complete_all(&channel->u.ctrl.completion);
 	}
 	if (channel->irq)
@@ -573,20 +579,20 @@ static int xdrv_evtchnl_alloc(struct xdrv_info *drv_info,
 	}
 
 	if (type == EVTCHNL_TYPE_CTRL) {
-		struct xen_drmif_sring *sring;
+		struct xen_displif_sring *sring;
 
 		init_completion(&evt_channel->u.ctrl.completion);
-		sring = (struct xen_drmif_sring *)page;
+		sring = (struct xen_displif_sring *)page;
 		SHARED_RING_INIT(sring);
 		/* TODO: use XC_PAGE_SIZE */
-		FRONT_RING_INIT(&evt_channel->u.ctrl.ring, sring, PAGE_SIZE);
+		FRONT_RING_INIT(&evt_channel->u.ctrl.ring, sring, XC_PAGE_SIZE);
 
 		ret = xenbus_grant_ring(xb_dev, sring, 1, &gref);
 		if (ret < 0)
 			goto fail;
 		handler = xdrv_evtchnl_interrupt_ctrl;
 	} else {
-		evt_channel->u.evt.page = (struct xendrm_event_page *)page;
+		evt_channel->u.evt.page = (struct xendispl_event_page *)page;
 		ret = gnttab_grant_foreign_access(xb_dev->otherend_id,
 			virt_to_gfn(page), 0);
 		if (ret < 0)
@@ -676,16 +682,16 @@ static int xdrv_evtchnl_create_all(struct xdrv_info *drv_info)
 			&drv_info->evt_pairs[conn].ctrl,
 			EVTCHNL_TYPE_CTRL,
 			plat_data->connectors[conn].xenstore_path,
-			XENDRM_FIELD_CTRL_RING_REF,
-			XENDRM_FIELD_CTRL_CHANNEL);
+			XENDISPL_FIELD_CTRL_RING_REF,
+			XENDISPL_FIELD_CTRL_CHANNEL);
 		if (ret < 0)
 			goto fail;
 		ret = xdrv_evtchnl_create(drv_info,
 			&drv_info->evt_pairs[conn].evt,
 			EVTCHNL_TYPE_EVT,
 			plat_data->connectors[conn].xenstore_path,
-			XENDRM_FIELD_EVT_RING_REF,
-			XENDRM_FIELD_EVT_CHANNEL);
+			XENDISPL_FIELD_EVT_RING_REF,
+			XENDISPL_FIELD_EVT_CHANNEL);
 		if (ret < 0)
 			goto fail;
 	}
@@ -736,12 +742,12 @@ static int xdrv_cfg_connector(struct xdrv_info *drv_info,
 	int ret;
 
 	connector_path = devm_kasprintf(&drv_info->xb_dev->dev,
-		GFP_KERNEL, "%s/%s/%d", path, XENDRM_PATH_CONNECTOR, index);
+		GFP_KERNEL, "%s/%s/%d", path, XENDISPL_PATH_CONNECTOR, index);
 	if (!connector_path)
 		return -ENOMEM;
 	connector->xenstore_path = connector_path;
-	if (xenbus_scanf(XBT_NIL, connector_path, XENDRM_FIELD_RESOLUTION,
-			"%d" XENDRM_RESOLUTION_SEPARATOR "%d",
+	if (xenbus_scanf(XBT_NIL, connector_path, XENDISPL_FIELD_RESOLUTION,
+			"%d" XENDISPL_RESOLUTION_SEPARATOR "%d",
 			&connector->width, &connector->height) < 0) {
 		connector->width = 0;
 		connector->height = 0;
@@ -766,12 +772,12 @@ static int xdrv_cfg_card(struct xdrv_info *drv_info,
 
 	path = xb_dev->nodename;
 	plat_data->num_connectors = 0;
-	connector_nodes = xdrv_cfg_get_num_nodes(path, XENDRM_PATH_CONNECTOR,
+	connector_nodes = xdrv_cfg_get_num_nodes(path, XENDISPL_PATH_CONNECTOR,
 		&num_conn);
 	kfree(connector_nodes);
 	if (!num_conn) {
 		LOG0("No connectors configured at %s/%s",
-			path, XENDRM_PATH_CONNECTOR);
+			path, XENDISPL_PATH_CONNECTOR);
 		return -ENODEV;
 	}
 	if (num_conn > XENDRM_DU_MAX_CRTCS) {
@@ -855,30 +861,29 @@ out:
 void xdrv_sh_buf_fill_page_dir(struct xdrv_shared_buffer_info *buf,
 		int num_pages_dir)
 {
-	struct xendrm_page_directory *page_dir;
+	struct xendispl_page_directory *page_dir;
 	unsigned char *ptr;
 	int i, cur_gref, grefs_left, num_grefs_per_page, to_copy;
 
 	ptr = buf->vdirectory;
 	grefs_left = buf->num_grefs - num_pages_dir;
-	num_grefs_per_page = (PAGE_SIZE - sizeof(
-		struct xendrm_page_directory)) / sizeof(grant_ref_t);
+	num_grefs_per_page = (XC_PAGE_SIZE -
+		offsetof(struct xendispl_page_directory, gref)) /
+		sizeof(grant_ref_t);
 	/* skip grefs at start, they are for pages granted for the directory */
 	cur_gref = num_pages_dir;
 	for (i = 0; i < num_pages_dir; i++) {
-		page_dir = (struct xendrm_page_directory *)ptr;
+		page_dir = (struct xendispl_page_directory *)ptr;
 		if (grefs_left <= num_grefs_per_page) {
 			to_copy = grefs_left;
-			page_dir->num_grefs = to_copy;
 			page_dir->gref_dir_next_page = GRANT_INVALID_REF;
 		} else {
 			to_copy = num_grefs_per_page;
-			page_dir->num_grefs = to_copy;
 			page_dir->gref_dir_next_page = buf->grefs[i + 1];
 		}
 		memcpy(&page_dir->gref, &buf->grefs[cur_gref],
 			to_copy * sizeof(grant_ref_t));
-		ptr += PAGE_SIZE;
+		ptr += XC_PAGE_SIZE;
 		grefs_left -= to_copy;
 		cur_gref += to_copy;
 	}
@@ -904,7 +909,7 @@ int xdrv_sh_buf_grant_refs(struct xenbus_device *xb_dev,
 			return cur_ref;
 		gnttab_grant_foreign_access_ref(cur_ref, otherend_id,
 			xen_page_to_gfn(vmalloc_to_page(buf->vdirectory +
-				PAGE_SIZE * i)), 0);
+				XC_PAGE_SIZE * i)), 0);
 		buf->grefs[j++] = cur_ref;
 	}
 	for (i = 0; i < num_pages_vbuffer; i++) {
@@ -913,7 +918,7 @@ int xdrv_sh_buf_grant_refs(struct xenbus_device *xb_dev,
 			return cur_ref;
 		gnttab_grant_foreign_access_ref(cur_ref, otherend_id,
 			xen_page_to_gfn(vmalloc_to_page(buf->vbuffer +
-				PAGE_SIZE * i)), 0);
+				XC_PAGE_SIZE * i)), 0);
 		buf->grefs[j++] = cur_ref;
 	}
 	gnttab_free_grant_references(priv_gref_head);
@@ -929,10 +934,10 @@ int xdrv_sh_buf_alloc_buffers(struct xdrv_shared_buffer_info *buf,
 	buf->grefs = kcalloc(num_grefs, sizeof(*buf->grefs), GFP_KERNEL);
 	if (!buf->grefs)
 		return -ENOMEM;
-	buf->vdirectory = vmalloc(num_pages_dir * PAGE_SIZE);
+	buf->vdirectory = vmalloc(num_pages_dir * XC_PAGE_SIZE);
 	if (!buf->vdirectory)
 		return -ENOMEM;
-	buf->vbuffer_sz = num_pages_vbuffer * PAGE_SIZE;
+	buf->vbuffer_sz = num_pages_vbuffer * XC_PAGE_SIZE;
 	return 0;
 }
 
@@ -955,12 +960,12 @@ xdrv_sh_buf_alloc(struct xdrv_info *drv_info, uint64_t dumb_cookie,
 	buf->vbuffer = vbuffer;
 	buf->dumb_cookie = dumb_cookie;
 	/* TODO: use XC_PAGE_SIZE */
-	num_pages_vbuffer = DIV_ROUND_UP(buffer_size, PAGE_SIZE);
+	num_pages_vbuffer = DIV_ROUND_UP(buffer_size, XC_PAGE_SIZE);
 	/* number of grefs a page can hold with respect to the
-	 * xendrm_page_directory header
+	 * xendispl_page_directory header
 	 */
-	num_grefs_per_page = (PAGE_SIZE - sizeof(
-		struct xendrm_page_directory)) / sizeof(grant_ref_t);
+	num_grefs_per_page = (XC_PAGE_SIZE - sizeof(
+		struct xendispl_page_directory)) / sizeof(grant_ref_t);
 	/* number of pages the directory itself consumes */
 	num_pages_dir = DIV_ROUND_UP(num_pages_vbuffer, num_grefs_per_page);
 	num_grefs = num_pages_vbuffer + num_pages_dir;
@@ -1133,7 +1138,7 @@ static void xdrv_be_on_changed(struct xenbus_device *xb_dev,
 }
 
 static const struct xenbus_device_id xdrv_ids[] = {
-	{ XENDRM_DRIVER_NAME },
+	{ XENDISPL_DRIVER_NAME },
 	{ "" }
 };
 
@@ -1150,18 +1155,18 @@ static int __init xdrv_init(void)
 	if (!xen_domain())
 		return -ENODEV;
 	if (xen_initial_domain()) {
-		LOG0(XENDRM_DRIVER_NAME " cannot run in Dom0");
+		LOG0(XENDISPL_DRIVER_NAME " cannot run in Dom0");
 		return -ENODEV;
 	}
 	if (!xen_has_pv_devices())
 		return -ENODEV;
-	LOG0("Registering XEN PV " XENDRM_DRIVER_NAME);
+	LOG0("Registering XEN PV " XENDISPL_DRIVER_NAME);
 	return xenbus_register_frontend(&xen_driver);
 }
 
 static void __exit xdrv_cleanup(void)
 {
-	LOG0("Unregistering XEN PV " XENDRM_DRIVER_NAME);
+	LOG0("Unregistering XEN PV " XENDISPL_DRIVER_NAME);
 	xenbus_unregister_driver(&xen_driver);
 }
 
@@ -1170,5 +1175,5 @@ module_exit(xdrv_cleanup);
 
 MODULE_DESCRIPTION("Xen virtual DRM device frontend");
 MODULE_LICENSE("GPL");
-MODULE_ALIAS("xen:"XENDRM_DRIVER_NAME);
+MODULE_ALIAS("xen:"XENDISPL_DRIVER_NAME);
 

@@ -70,7 +70,7 @@ static int xendrm_dumb_create(struct drm_file *file_priv, struct drm_device *dev
 		memset(cma_obj->vaddr, col, args->size);
 		col += 0x7f;
 	}
-	ret = xendrm_du->front_funcs->dumb_create(
+	ret = xendrm_du->front_funcs->dbuf_create(
 			xendrm_du->xdrv_info, args->handle, args->width,
 			args->height, args->bpp, args->size, cma_obj->vaddr);
 	if (ret < 0)
@@ -93,7 +93,7 @@ static int xendrm_dumb_destroy(struct drm_file *file,
 	struct xendrm_du_device *xendrm_du = dev->dev_private;
 
 	DRM_ERROR("%s\n", __FUNCTION__);
-	xendrm_du->front_funcs->dumb_destroy(xendrm_du->xdrv_info, handle);
+	xendrm_du->front_funcs->dbuf_destroy(xendrm_du->xdrv_info, handle);
 	return drm_gem_dumb_destroy(file, dev, handle);
 }
 
@@ -156,7 +156,7 @@ static struct drm_driver xendrm_driver = {
 };
 
 int xendrm_probe(struct platform_device *pdev,
-	struct xendrm_front_funcs *xendrm_front_funcs)
+	struct xendispl_front_funcs *xendrm_front_funcs)
 {
 	struct xendrm_plat_data *platdata;
 	struct xendrm_du_device *xendrm_du;
