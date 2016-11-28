@@ -38,9 +38,9 @@
 #include "xen-drm-front.h"
 #include "xen-drm-logs.h"
 
+
 #ifndef XC_PAGE_SIZE
-#define XC_PAGE_SIZE		PAGE_SIZE
-#warning "XC_PAGE_SIZE is not defined, assuming PAGE_SIZE"
+#define XC_PAGE_SIZE	XEN_PAGE_SIZE
 #endif
 
 #define GRANT_INVALID_REF	0
@@ -584,8 +584,7 @@ static int xdrv_evtchnl_alloc(struct xdrv_info *drv_info,
 		init_completion(&evt_channel->u.ctrl.completion);
 		sring = (struct xen_displif_sring *)page;
 		SHARED_RING_INIT(sring);
-		/* TODO: use XC_PAGE_SIZE */
-		FRONT_RING_INIT(&evt_channel->u.ctrl.ring, sring, XC_PAGE_SIZE);
+		FRONT_RING_INIT(&evt_channel->u.ctrl.ring, sring, XEN_PAGE_SIZE);
 
 		ret = xenbus_grant_ring(xb_dev, sring, 1, &gref);
 		if (ret < 0)
@@ -867,7 +866,7 @@ void xdrv_sh_buf_fill_page_dir(struct xdrv_shared_buffer_info *buf,
 
 	ptr = buf->vdirectory;
 	grefs_left = buf->num_grefs - num_pages_dir;
-	num_grefs_per_page = (XC_PAGE_SIZE -
+	num_grefs_per_page = (XEN_PAGE_SIZE -
 		offsetof(struct xendispl_page_directory, gref)) /
 		sizeof(grant_ref_t);
 	/* skip grefs at start, they are for pages granted for the directory */
@@ -883,7 +882,7 @@ void xdrv_sh_buf_fill_page_dir(struct xdrv_shared_buffer_info *buf,
 		}
 		memcpy(&page_dir->gref, &buf->grefs[cur_gref],
 			to_copy * sizeof(grant_ref_t));
-		ptr += XC_PAGE_SIZE;
+		ptr += XEN_PAGE_SIZE;
 		grefs_left -= to_copy;
 		cur_gref += to_copy;
 	}
@@ -909,7 +908,7 @@ int xdrv_sh_buf_grant_refs(struct xenbus_device *xb_dev,
 			return cur_ref;
 		gnttab_grant_foreign_access_ref(cur_ref, otherend_id,
 			xen_page_to_gfn(vmalloc_to_page(buf->vdirectory +
-				XC_PAGE_SIZE * i)), 0);
+				XEN_PAGE_SIZE * i)), 0);
 		buf->grefs[j++] = cur_ref;
 	}
 	for (i = 0; i < num_pages_vbuffer; i++) {
@@ -918,7 +917,7 @@ int xdrv_sh_buf_grant_refs(struct xenbus_device *xb_dev,
 			return cur_ref;
 		gnttab_grant_foreign_access_ref(cur_ref, otherend_id,
 			xen_page_to_gfn(vmalloc_to_page(buf->vbuffer +
-				XC_PAGE_SIZE * i)), 0);
+				XEN_PAGE_SIZE * i)), 0);
 		buf->grefs[j++] = cur_ref;
 	}
 	gnttab_free_grant_references(priv_gref_head);
@@ -930,14 +929,14 @@ int xdrv_sh_buf_alloc_buffers(struct xdrv_shared_buffer_info *buf,
 		int num_pages_dir, int num_pages_vbuffer,
 		int num_grefs)
 {
-	/* TODO: use XC_PAGE_SIZE */
+	/* TODO: use XEN_PAGE_SIZE */
 	buf->grefs = kcalloc(num_grefs, sizeof(*buf->grefs), GFP_KERNEL);
 	if (!buf->grefs)
 		return -ENOMEM;
-	buf->vdirectory = vmalloc(num_pages_dir * XC_PAGE_SIZE);
+	buf->vdirectory = vmalloc(num_pages_dir * XEN_PAGE_SIZE);
 	if (!buf->vdirectory)
 		return -ENOMEM;
-	buf->vbuffer_sz = num_pages_vbuffer * XC_PAGE_SIZE;
+	buf->vbuffer_sz = num_pages_vbuffer * XEN_PAGE_SIZE;
 	return 0;
 }
 
@@ -959,12 +958,12 @@ xdrv_sh_buf_alloc(struct xdrv_info *drv_info, uint64_t dumb_cookie,
 	}
 	buf->vbuffer = vbuffer;
 	buf->dumb_cookie = dumb_cookie;
-	/* TODO: use XC_PAGE_SIZE */
-	num_pages_vbuffer = DIV_ROUND_UP(buffer_size, XC_PAGE_SIZE);
+	/* TODO: use XEN_PAGE_SIZE */
+	num_pages_vbuffer = DIV_ROUND_UP(buffer_size, XEN_PAGE_SIZE);
 	/* number of grefs a page can hold with respect to the
 	 * xendispl_page_directory header
 	 */
-	num_grefs_per_page = (XC_PAGE_SIZE - sizeof(
+	num_grefs_per_page = (XEN_PAGE_SIZE - sizeof(
 		struct xendispl_page_directory)) / sizeof(grant_ref_t);
 	/* number of pages the directory itself consumes */
 	num_pages_dir = DIV_ROUND_UP(num_pages_vbuffer, num_grefs_per_page);
@@ -1152,6 +1151,8 @@ static struct xenbus_driver xen_driver = {
 
 static int __init xdrv_init(void)
 {
+	BUILD_BUG_ON(XEN_PAGE_SIZE != PAGE_SIZE);
+
 	if (!xen_domain())
 		return -ENODEV;
 	if (xen_initial_domain()) {
