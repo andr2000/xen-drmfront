@@ -244,11 +244,11 @@ static struct drm_plane *xendrm_du_crtc_create_primary(
 }
 
 static int xendrm_du_crtc_props_init(struct xendrm_du_device *xendrm_du,
-	struct xendrm_du_crtc *crtc)
+	struct xendrm_du_crtc *du_crtc)
 {
-	crtc->props.alpha = drm_property_create_range(xendrm_du->ddev,
+	du_crtc->props.alpha = drm_property_create_range(xendrm_du->ddev,
 		0, "alpha", 0, 255);
-	if (!crtc->props.alpha)
+	if (!du_crtc->props.alpha)
 		return -ENOMEM;
 	return 0;
 }
