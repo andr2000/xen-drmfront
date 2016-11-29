@@ -200,11 +200,6 @@ static int xendrm_du_plane_atomic_check(struct drm_plane *plane,
 	return -EINVAL;
 }
 
-static void xendrm_du_plane_atomic_disable(struct drm_plane *plane,
-	struct drm_plane_state *old_state)
-{
-}
-
 static void xendrm_du_plane_atomic_update(struct drm_plane *plane,
 	struct drm_plane_state *old_state)
 {
@@ -212,7 +207,6 @@ static void xendrm_du_plane_atomic_update(struct drm_plane *plane,
 
 static const struct drm_plane_helper_funcs xendrm_du_plane_helper_funcs = {
 	.atomic_check = xendrm_du_plane_atomic_check,
-	.atomic_disable = xendrm_du_plane_atomic_disable,
 	.atomic_update = xendrm_du_plane_atomic_update,
 };
 
