@@ -26,6 +26,8 @@
 /* timeout for page flip event reception */
 #define XENDRM_EVT_TO_MS	1000
 
+#define NUM_PG_FLIP_EVENT_SENDERS	2
+
 static void xendrm_du_dump_vblank_event(struct drm_pending_vblank_event *e)
 {
 #if 0
@@ -348,12 +350,10 @@ static int xendrm_du_crtc_do_page_flip(struct drm_crtc *crtc,
 	 * there are 2 cases:
 	 * 1. backend sends page flip completed before we can propagate
 	 * this event to the user space (atomic_begin/flush called)
-	 * 2. backend is clamsy and sends event later than atomic_flush
+	 * 2. backend is clumsy and sends event later than atomic_flush
 	 */
 	du_crtc->pg_flip_event = event;
-	/* atomic_flush will happen */
-	du_crtc->pg_flip_flush_queued = true;
-	du_crtc->pg_flip_be_ntfy_fired = false;
+	du_crtc->pg_flip_sendevt_refcnt = NUM_PG_FLIP_EVENT_SENDERS;
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 	xendrm_du = du_crtc->xendrm_du;
 	ret = xendrm_du->front_funcs->page_flip(
@@ -407,13 +407,10 @@ void xendrm_du_crtc_on_page_flip(struct xendrm_du_crtc *du_crtc, uint64_t fb_coo
 
 //	DRM_ERROR("%s =============================== EVENT\n", __FUNCTION__);
 	spin_lock_irqsave(&dev->event_lock, flags);
-	/* are we delivering faster than atomic_flush happens?
-	 * if so, then null pg_flip_event and atomic_flush will anyways
-	 * receive its own copy. but nulling it will signal to atomic_flush
-	 * */
-	if (du_crtc->pg_flip_flush_queued)
-		du_crtc->pg_flip_be_ntfy_fired = true;
-	else
+	/* are we delivering faster than atomic_flush happens? */
+	if (du_crtc->pg_flip_sendevt_refcnt)
+		du_crtc->pg_flip_sendevt_refcnt--;
+	if (!du_crtc->pg_flip_sendevt_refcnt)
 		xendrm_du_crtc_ntfy_page_flip_completed(du_crtc);
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 
@@ -440,8 +437,7 @@ static void xendrm_du_crtc_timer_callback(unsigned long data)
 	if (likely(du_crtc->timer_pf_event_to_cnt)) {
 		du_crtc->timer_pf_event_to_cnt--;
 		if (unlikely(!du_crtc->timer_pf_event_to_cnt)) {
-			if (!du_crtc->pg_flip_flush_queued &&
-					!du_crtc->pg_flip_be_ntfy_fired) {
+			if (du_crtc->pg_flip_sendevt_refcnt) {
 				DRM_ERROR("Flip event timed-out, releasing\n");
 				xendrm_du_crtc_ntfy_page_flip_completed(du_crtc);
 			}
@@ -523,12 +519,11 @@ static void xendrm_du_crtc_atomic_flush(struct drm_crtc *crtc,
 		spin_lock_irqsave(&dev->event_lock, flags);
 		crtc->state->event = NULL;
 		if (likely(event->event.base.type == DRM_EVENT_FLIP_COMPLETE)) {
-			du_crtc->pg_flip_flush_queued = false;
-			if (du_crtc->pg_flip_be_ntfy_fired)
+			if (du_crtc->pg_flip_sendevt_refcnt)
+				du_crtc->pg_flip_sendevt_refcnt--;
+			if (!du_crtc->pg_flip_sendevt_refcnt)
 				xendrm_du_crtc_ntfy_page_flip_completed(du_crtc);
-			else
-				du_crtc->pg_flip_event = event;
-		} else {
+		} else if (likely(event->event.base.type == DRM_EVENT_VBLANK)) {
 			if (drm_crtc_vblank_get(crtc) == 0)
 				drm_crtc_arm_vblank_event(crtc, event);
 			else

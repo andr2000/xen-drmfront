@@ -43,8 +43,11 @@ struct xendrm_du_crtc {
 	bool enabled;
 	/* vblank and flip handling */
 	struct drm_pending_vblank_event *pg_flip_event;
-	bool pg_flip_flush_queued;
-	bool pg_flip_be_ntfy_fired;
+	/* there are to concurrent entities which can send a pending page flip
+	 * event: either atomic_flush or page flip event from back.
+	 * whatever entity reaches 0 in the counter below it sends the event
+	 */
+	int pg_flip_sendevt_refcnt;
 	wait_queue_head_t flip_wait;
 	struct timer_list timer_vblank;
 	spinlock_t timer_lock;
