@@ -39,10 +39,6 @@
 #include "xen-drm-logs.h"
 
 
-#ifndef XC_PAGE_SIZE
-#define XC_PAGE_SIZE	XEN_PAGE_SIZE
-#endif
-
 #define GRANT_INVALID_REF	0
 /* timeout in ms to wait for backend to respond */
 #define VDRM_WAIT_BACK_MS	5000
@@ -126,6 +122,7 @@ struct DRMIF_TO_KERN_ERROR {
 static struct DRMIF_TO_KERN_ERROR drmif_kern_error_codes[] = {
 	{ .drmif = XENDISPL_RSP_OKAY,     .kern = 0 },
 	{ .drmif = XENDISPL_RSP_ERROR,    .kern = EIO },
+	{ .drmif = XENDISPL_RSP_NOTSUPP,  .kern = ENOSYS },
 };
 
 static int drmif_to_kern_error(int drmif_err)
@@ -315,7 +312,7 @@ int xendispl_front_fb_detach(struct xdrv_info *drv_info, uint64_t fb_cookie)
 	return ret;
 }
 
-int xendispl_front_page_flip(struct xdrv_info *drv_info, int crtc_idx,
+int xendispl_front_page_flip(struct xdrv_info *drv_info, int conn_idx,
 	uint64_t fb_cookie)
 {
 	struct xdrv_evtchnl_info *evtchnl;
@@ -323,13 +320,13 @@ int xendispl_front_page_flip(struct xdrv_info *drv_info, int crtc_idx,
 	unsigned long flags;
 	int ret;
 
-	if (unlikely(crtc_idx >= drv_info->num_evt_pairs))
+	if (unlikely(conn_idx >= drv_info->num_evt_pairs))
 		return -EINVAL;
-	evtchnl = &drv_info->evt_pairs[crtc_idx].ctrl;
+	evtchnl = &drv_info->evt_pairs[conn_idx].ctrl;
 	mutex_lock(&drv_info->io_generic_evt_lock);
 	spin_lock_irqsave(&drv_info->io_lock, flags);
 	req = ddrv_be_prepare_req(evtchnl, XENDISPL_OP_PG_FLIP);
-	req->op.pg_flip.conn_idx = crtc_idx;
+	req->op.pg_flip.conn_idx = conn_idx;
 	req->op.pg_flip.fb_cookie = fb_cookie;
 	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
 	mutex_unlock(&drv_info->io_generic_evt_lock);
@@ -929,7 +926,6 @@ int xdrv_sh_buf_alloc_buffers(struct xdrv_shared_buffer_info *buf,
 		int num_pages_dir, int num_pages_vbuffer,
 		int num_grefs)
 {
-	/* TODO: use XEN_PAGE_SIZE */
 	buf->grefs = kcalloc(num_grefs, sizeof(*buf->grefs), GFP_KERNEL);
 	if (!buf->grefs)
 		return -ENOMEM;
@@ -958,7 +954,6 @@ xdrv_sh_buf_alloc(struct xdrv_info *drv_info, uint64_t dumb_cookie,
 	}
 	buf->vbuffer = vbuffer;
 	buf->dumb_cookie = dumb_cookie;
-	/* TODO: use XEN_PAGE_SIZE */
 	num_pages_vbuffer = DIV_ROUND_UP(buffer_size, XEN_PAGE_SIZE);
 	/* number of grefs a page can hold with respect to the
 	 * xendispl_page_directory header
@@ -1151,7 +1146,7 @@ static struct xenbus_driver xen_driver = {
 
 static int __init xdrv_init(void)
 {
-	BUILD_BUG_ON(XEN_PAGE_SIZE != PAGE_SIZE);
+	BUILD_BUG_ON(XEN_PAGE_SIZE > PAGE_SIZE);
 
 	if (!xen_domain())
 		return -ENODEV;
@@ -1174,7 +1169,7 @@ static void __exit xdrv_cleanup(void)
 module_init(xdrv_init);
 module_exit(xdrv_cleanup);
 
-MODULE_DESCRIPTION("Xen virtual DRM device frontend");
+MODULE_DESCRIPTION("Xen virtual display device frontend");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS("xen:"XENDISPL_DRIVER_NAME);
 
