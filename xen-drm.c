@@ -27,10 +27,8 @@ int xendrm_enable_vblank(struct drm_device *dev, unsigned int pipe)
 {
 	struct xendrm_du_device *xendrm_du = dev->dev_private;
 
-	DRM_DEBUG("%s\n", __FUNCTION__);
-	if (unlikely(pipe >= xendrm_du->num_crtcs)) {
+	if (unlikely(pipe >= xendrm_du->num_crtcs))
 		return -EINVAL;
-	}
 	xendrm_du_crtc_enable_vblank(&xendrm_du->crtcs[pipe], true);
 	return 0;
 }
@@ -39,7 +37,6 @@ void xendrm_disable_vblank(struct drm_device *dev, unsigned int pipe)
 {
 	struct xendrm_du_device *xendrm_du = dev->dev_private;
 
-	DRM_DEBUG("%s\n", __FUNCTION__);
 	if (unlikely(pipe >= xendrm_du->num_crtcs))
 		return;
 	xendrm_du_crtc_enable_vblank(&xendrm_du->crtcs[pipe], false);
@@ -54,30 +51,20 @@ static int xendrm_dumb_create(struct drm_file *file_priv, struct drm_device *dev
 	int ret;
 
 	ret = drm_gem_cma_dumb_create(file_priv, dev, args);
-	DRM_ERROR("%s ret = %d\n", __FUNCTION__, ret);
 	if (ret < 0)
 		goto fail;
 	gem_obj = drm_gem_object_lookup(file_priv, args->handle);
-	DRM_ERROR("%s handle %x gem_obj %p\n", __FUNCTION__, args->handle, gem_obj);
 	if (!gem_obj) {
 		ret = -EINVAL;
 		goto fail_destroy;
 	}
 	drm_gem_object_unreference_unlocked(gem_obj);
 	cma_obj = to_drm_gem_cma_obj(gem_obj);
-	{
-		static uint8_t col = 0x1f;
-		memset(cma_obj->vaddr, col, args->size);
-		col += 0x7f;
-	}
 	ret = xendrm_du->front_funcs->dbuf_create(
 			xendrm_du->xdrv_info, args->handle, args->width,
 			args->height, args->bpp, args->size, cma_obj->vaddr);
 	if (ret < 0)
 		goto fail_destroy;
-	DRM_ERROR("%s width %d height %d bpp %d flags %d size %llu\n",
-		__FUNCTION__, args->width, args->height, args->bpp,
-		args->flags, args->size);
 	return 0;
 
 fail_destroy:
@@ -92,7 +79,6 @@ static int xendrm_dumb_destroy(struct drm_file *file,
 {
 	struct xendrm_du_device *xendrm_du = dev->dev_private;
 
-	DRM_ERROR("%s\n", __FUNCTION__);
 	xendrm_du->front_funcs->dbuf_destroy(xendrm_du->xdrv_info, handle);
 	return drm_gem_dumb_destroy(file, dev, handle);
 }
