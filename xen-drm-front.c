@@ -111,6 +111,9 @@ struct xdrv_info {
 
 	/* dumb buffers */
 	struct xdrv_shared_buffer_info *dumb_buf;
+
+	wait_queue_head_t be_closed_wait;
+	bool be_closed_wait_done;
 };
 
 struct DRMIF_TO_KERN_ERROR {
@@ -951,54 +954,6 @@ fail:
 	return NULL;
 }
 
-static void xdrv_remove_internal(struct xdrv_info *drv_info)
-{
-	ddrv_cleanup(drv_info);
-	xdrv_evtchnl_free_all(drv_info);
-	xdrv_sh_buf_free_all(drv_info);
-}
-
-static int xdrv_probe(struct xenbus_device *xb_dev,
-	const struct xenbus_device_id *id)
-{
-	struct xdrv_info *drv_info;
-	int ret;
-
-	drv_info = devm_kzalloc(&xb_dev->dev, sizeof(*drv_info), GFP_KERNEL);
-	if (!drv_info) {
-		ret = -ENOMEM;
-		goto fail;
-	}
-
-	xenbus_switch_state(xb_dev, XenbusStateInitialising);
-
-	drv_info->xb_dev = xb_dev;
-	spin_lock_init(&drv_info->io_lock);
-	mutex_init(&drv_info->mutex);
-	drv_info->ddrv_registered = false;
-	dev_set_drvdata(&xb_dev->dev, drv_info);
-	return 0;
-fail:
-	xenbus_dev_fatal(xb_dev, ret, "allocating device memory");
-	return ret;
-}
-
-static int xdrv_remove(struct xenbus_device *dev)
-{
-	struct xdrv_info *drv_info = dev_get_drvdata(&dev->dev);
-
-	mutex_lock(&drv_info->mutex);
-	xdrv_remove_internal(drv_info);
-	mutex_unlock(&drv_info->mutex);
-	xenbus_switch_state(dev, XenbusStateClosed);
-	return 0;
-}
-
-static int xdrv_resume(struct xenbus_device *dev)
-{
-	return 0;
-}
-
 static int xdrv_be_on_initwait(struct xdrv_info *drv_info)
 {
 	struct xendrm_plat_data *cfg_plat_data;
@@ -1022,8 +977,10 @@ static int xdrv_be_on_connected(struct xdrv_info *drv_info)
 
 static void xdrv_be_on_disconnected(struct xdrv_info *drv_info)
 {
-	xdrv_remove_internal(drv_info);
+	ddrv_cleanup(drv_info);
 	xdrv_evtchnl_set_state(drv_info, EVTCHNL_STATE_DISCONNECTED);
+	xdrv_evtchnl_free_all(drv_info);
+	xdrv_sh_buf_free_all(drv_info);
 }
 
 static void xdrv_be_on_changed(struct xenbus_device *xb_dev,
@@ -1032,8 +989,7 @@ static void xdrv_be_on_changed(struct xenbus_device *xb_dev,
 	struct xdrv_info *drv_info = dev_get_drvdata(&xb_dev->dev);
 	int ret;
 
-	dev_dbg(&xb_dev->dev,
-		"Backend state is %s, front is %s",
+	LOG0("Backend state is %s, front is %s",
 		xenbus_strstate(backend_state),
 		xenbus_strstate(xb_dev->state));
 	switch (backend_state) {
@@ -1090,15 +1046,62 @@ static void xdrv_be_on_changed(struct xenbus_device *xb_dev,
 			break;
 		/* Missed the backend's CLOSING state -- fallthrough */
 	case XenbusStateClosing:
-		/* FIXME: is this check needed? */
-		if (xb_dev->state == XenbusStateClosing)
-			break;
 		mutex_lock(&drv_info->mutex);
 		xdrv_be_on_disconnected(drv_info);
 		mutex_unlock(&drv_info->mutex);
+		drv_info->be_closed_wait_done = true;
+		wake_up(&drv_info->be_closed_wait);
 		xenbus_switch_state(xb_dev, XenbusStateInitialising);
 		break;
 	}
+}
+
+static int xdrv_probe(struct xenbus_device *xb_dev,
+	const struct xenbus_device_id *id)
+{
+	struct xdrv_info *drv_info;
+	int ret;
+
+	drv_info = devm_kzalloc(&xb_dev->dev, sizeof(*drv_info), GFP_KERNEL);
+	if (!drv_info) {
+		ret = -ENOMEM;
+		goto fail;
+	}
+
+	xenbus_switch_state(xb_dev, XenbusStateInitialising);
+
+	drv_info->xb_dev = xb_dev;
+	spin_lock_init(&drv_info->io_lock);
+	mutex_init(&drv_info->mutex);
+	drv_info->ddrv_registered = false;
+	init_waitqueue_head(&drv_info->be_closed_wait);
+	dev_set_drvdata(&xb_dev->dev, drv_info);
+	return 0;
+fail:
+	xenbus_dev_fatal(xb_dev, ret, "allocating device memory");
+	return ret;
+}
+
+static int xdrv_remove(struct xenbus_device *dev)
+{
+	struct xdrv_info *drv_info = dev_get_drvdata(&dev->dev);
+
+	drv_info->be_closed_wait_done = false;
+	xenbus_switch_state(dev, XenbusStateClosing);
+	if (wait_event_timeout(drv_info->be_closed_wait,
+			drv_info->be_closed_wait_done,
+			msecs_to_jiffies(VDRM_WAIT_BACK_MS)))
+		return 0;
+	LOG0("backend closure timed out, forcing removal\n");
+	mutex_lock(&drv_info->mutex);
+	xdrv_be_on_disconnected(drv_info);
+	mutex_unlock(&drv_info->mutex);
+	return 0;
+}
+
+static int xdrv_resume(struct xenbus_device *dev)
+{
+	return 0;
 }
 
 static const struct xenbus_device_id xdrv_ids[] = {
