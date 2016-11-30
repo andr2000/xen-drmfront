@@ -27,7 +27,7 @@ struct xendispl_front_funcs {
 		uint64_t fb_cookie);
 	int (*dbuf_create)(struct xdrv_info *drv_info, uint64_t dumb_cookie,
 		uint32_t width, uint32_t height, uint32_t bpp, uint64_t size,
-		void *vaddr);
+		dma_addr_t paddr);
 	int (*dbuf_destroy)(struct xdrv_info *drv_info, uint64_t dumb_cookie);
 	int (*fb_attach)(struct xdrv_info *drv_info, uint64_t dumb_cookie,
 		uint64_t fb_cookie, uint32_t width, uint32_t height,

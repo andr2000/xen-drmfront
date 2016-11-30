@@ -88,7 +88,7 @@ struct xdrv_shared_buffer_info {
 	int num_grefs;
 	grant_ref_t *grefs;
 	unsigned char *vdirectory;
-	unsigned char *vbuffer;
+	dma_addr_t paddr;
 	size_t vbuffer_sz;
 };
 
@@ -138,7 +138,7 @@ static inline void xdrv_evtchnl_flush(
 		struct xdrv_evtchnl_info *channel);
 static struct xdrv_shared_buffer_info *xdrv_sh_buf_alloc(
 	struct xdrv_info *drv_info, uint64_t dumb_cookie,
-	void *vbuffer, unsigned int buffer_size);
+	dma_addr_t paddr, unsigned int buffer_size);
 static grant_ref_t xdrv_sh_buf_get_dir_start(
 	struct xdrv_shared_buffer_info *buf);
 static void xdrv_sh_buf_free_by_cookie(struct xdrv_info *drv_info,
@@ -209,7 +209,7 @@ int xendispl_front_mode_set(struct xendrm_du_crtc *du_crtc, uint32_t x,
 
 int xendispl_front_dbuf_create(struct xdrv_info *drv_info, uint64_t dumb_cookie,
 	uint32_t width, uint32_t height, uint32_t bpp, uint64_t size,
-	void *vaddr)
+	dma_addr_t paddr)
 {
 	struct xdrv_evtchnl_info *evtchnl;
 	struct xdrv_shared_buffer_info *buf;
@@ -219,7 +219,7 @@ int xendispl_front_dbuf_create(struct xdrv_info *drv_info, uint64_t dumb_cookie,
 	evtchnl = &drv_info->evt_pairs[GENERIC_OP_EVT_CHNL].ctrl;
 	if (unlikely(!evtchnl))
 		return -EIO;
-	buf = xdrv_sh_buf_alloc(drv_info, dumb_cookie, vaddr, size);
+	buf = xdrv_sh_buf_alloc(drv_info, dumb_cookie, paddr, size);
 	if (!buf)
 		return -ENOMEM;
 	spin_lock_irqsave(&drv_info->io_lock, flags);
@@ -878,12 +878,14 @@ int xdrv_sh_buf_grant_refs(struct xenbus_device *xb_dev,
 		buf->grefs[j++] = cur_ref;
 	}
 	for (i = 0; i < num_pages_vbuffer; i++) {
+		unsigned long pfn;
+
 		cur_ref = gnttab_claim_grant_reference(&priv_gref_head);
 		if (cur_ref < 0)
 			return cur_ref;
+		pfn = __phys_to_pfn(buf->paddr + XEN_PAGE_SIZE * i);
 		gnttab_grant_foreign_access_ref(cur_ref, otherend_id,
-			xen_page_to_gfn(vmalloc_to_page(buf->vbuffer +
-				XEN_PAGE_SIZE * i)), 0);
+			pfn_to_gfn(pfn), 0);
 		buf->grefs[j++] = cur_ref;
 	}
 	gnttab_free_grant_references(priv_gref_head);
@@ -907,12 +909,12 @@ int xdrv_sh_buf_alloc_buffers(struct xdrv_shared_buffer_info *buf,
 
 static struct xdrv_shared_buffer_info *
 xdrv_sh_buf_alloc(struct xdrv_info *drv_info, uint64_t dumb_cookie,
-	void *vbuffer, unsigned int buffer_size)
+	dma_addr_t paddr, unsigned int buffer_size)
 {
 	struct xdrv_shared_buffer_info *buf;
 	int num_pages_vbuffer, num_grefs_per_page, num_pages_dir, num_grefs;
 
-	if (!vbuffer)
+	if (!paddr)
 		return NULL;
 	buf = kzalloc(sizeof(*buf), GFP_KERNEL);
 	if (!buf)
@@ -921,7 +923,7 @@ xdrv_sh_buf_alloc(struct xdrv_info *drv_info, uint64_t dumb_cookie,
 		drv_info->dumb_buf = buf;
 		INIT_LIST_HEAD(&buf->list);
 	}
-	buf->vbuffer = vbuffer;
+	buf->paddr = paddr;
 	buf->dumb_cookie = dumb_cookie;
 	num_pages_vbuffer = DIV_ROUND_UP(buffer_size, XEN_PAGE_SIZE);
 	/* number of grefs a page can hold with respect to the
