@@ -15,12 +15,18 @@
  */
 
 #include <drm/drmP.h>
+#include <drm/drm_gem.h>
+#ifdef CONFIG_DRM_GEM_CMA_HELPER
 #include <drm/drm_fb_cma_helper.h>
 #include <drm/drm_gem_cma_helper.h>
+#endif
 
 #include "xen-drm.h"
 #include "xen-drm-front.h"
 #include "xen-drm-kms.h"
+#ifndef CONFIG_DRM_GEM_CMA_HELPER
+#include "xen-drm-gem.h"
+#endif
 #include "xen-drm-logs.h"
 
 int xendrm_enable_vblank(struct drm_device *dev, unsigned int pipe)
@@ -42,37 +48,78 @@ void xendrm_disable_vblank(struct drm_device *dev, unsigned int pipe)
 	xendrm_du_crtc_enable_vblank(&xendrm_du->crtcs[pipe], false);
 }
 
-static int xendrm_dumb_create(struct drm_file *file_priv, struct drm_device *dev,
-	struct drm_mode_create_dumb *args)
+struct xendrm_buf_ops {
+	dma_addr_t (*dumb_create)(struct drm_file *file_priv,
+		struct drm_device *dev, struct drm_mode_create_dumb *args);
+	int (*dumb_destroy)(struct drm_file *file,
+		struct drm_device *dev, uint32_t handle);
+	void (*gem_free_object)(struct drm_gem_object *obj);
+	int (*gem_dumb_map_offset)(struct drm_file *file_priv,
+		struct drm_device *drm, u32 handle, u64 *offset);
+	int (*mmap) (struct file *, struct vm_area_struct *);
+};
+
+#ifdef CONFIG_DRM_GEM_CMA_HELPER
+static dma_addr_t xendrm_cma_dumb_create(struct drm_file *file_priv,
+	struct drm_device *dev, struct drm_mode_create_dumb *args)
 {
-	struct xendrm_du_device *xendrm_du = dev->dev_private;
 	struct drm_gem_object *gem_obj;
 	struct drm_gem_cma_object *cma_obj;
-	int ret;
 
 	ret = drm_gem_cma_dumb_create(file_priv, dev, args);
 	if (ret < 0)
 		goto fail;
 	gem_obj = drm_gem_object_lookup(file_priv, args->handle);
-	if (!gem_obj) {
-		ret = -EINVAL;
+	if (!gem_obj)
 		goto fail_destroy;
-	}
 	drm_gem_object_unreference_unlocked(gem_obj);
 	cma_obj = to_drm_gem_cma_obj(gem_obj);
-	if (!cma_obj) {
-		ret = -EINVAL;
-		goto fail_destroy;
+	return cma_obj->paddr;
+
+fail_destroy:
+	drm_gem_dumb_destroy(file_priv, dev, args->handle);
+fail:
+	return 0;
+}
+
+static struct xendrm_buf_ops xendrm_buf_ops = {
+	.dumb_create = xendrm_cma_dumb_create,
+	.dumb_destroy = drm_gem_dumb_destroy,
+	.gem_free_object = drm_gem_cma_free_object,
+	.mmap = drm_gem_cma_mmap,
+};
+#else
+
+static struct xendrm_buf_ops xendrm_buf_ops = {
+	.dumb_create = xendrm_gem_dumb_create,
+	.dumb_destroy = xendrm_gem_dumb_destroy,
+	.gem_free_object = xendrm_gem_free_object,
+	.gem_dumb_map_offset = xendrm_gem_dumb_map_offset,
+	.mmap = xendrm_gem_mmap,
+};
+#endif
+
+static int xendrm_dumb_create(struct drm_file *file_priv, struct drm_device *dev,
+	struct drm_mode_create_dumb *args)
+{
+	struct xendrm_du_device *xendrm_du = dev->dev_private;
+	dma_addr_t paddr;
+	int ret;
+
+	paddr = xendrm_buf_ops.dumb_create(file_priv, dev, args);
+	if (!paddr) {
+		ret = -ENOMEM;
+		goto fail;
 	}
 	ret = xendrm_du->front_funcs->dbuf_create(
 			xendrm_du->xdrv_info, args->handle, args->width,
-			args->height, args->bpp, args->size, cma_obj->paddr);
+			args->height, args->bpp, args->size, paddr);
 	if (ret < 0)
 		goto fail_destroy;
 	return 0;
 
 fail_destroy:
-	drm_gem_dumb_destroy(file_priv, dev, args->handle);
+	xendrm_buf_ops.dumb_destroy(file_priv, dev, args->handle);
 fail:
 	DRM_ERROR("Failed to create dumb buffer, ret %d\n", ret);
 	return ret;
@@ -84,12 +131,31 @@ static int xendrm_dumb_destroy(struct drm_file *file,
 	struct xendrm_du_device *xendrm_du = dev->dev_private;
 
 	xendrm_du->front_funcs->dbuf_destroy(xendrm_du->xdrv_info, handle);
-	return drm_gem_dumb_destroy(file, dev, handle);
+	return xendrm_buf_ops.dumb_destroy(file, dev, handle);
 }
 
-void xendrm_gem_free_object(struct drm_gem_object *obj)
+void xendrm_free_object(struct drm_gem_object *obj)
 {
-	drm_gem_cma_free_object(obj);
+	xendrm_buf_ops.gem_free_object(obj);
+}
+
+int xendrm_mmap(struct file *file, struct vm_area_struct *vma)
+{
+	int ret;
+
+	ret = xendrm_buf_ops.mmap(file, vma);
+	DRM_ERROR("xendrm_buf_ops.mmap %d\n", ret);
+	return ret;
+}
+
+int xendrm_dumb_map_offset(struct drm_file *file_priv,
+	struct drm_device *dev, uint32_t handle, uint64_t *offset)
+{
+	int ret;
+
+	ret = xendrm_buf_ops.gem_dumb_map_offset(file_priv, dev, handle, offset);
+	DRM_ERROR("xendrm_buf_ops.gem_dumb_map_offset %d\n", ret);
+	return ret;
 }
 
 static void xendrm_on_page_flip(struct platform_device *pdev,
@@ -113,7 +179,12 @@ static const struct file_operations xendrm_fops = {
 	.poll           = drm_poll,
 	.read           = drm_read,
 	.llseek         = no_llseek,
-	.mmap           = drm_gem_cma_mmap,
+	.mmap           = xendrm_mmap,
+};
+
+const struct vm_operations_struct xendrm_gem_vm_ops = {
+	.open = drm_gem_vm_open,
+	.close = drm_gem_vm_close,
 };
 
 static struct drm_driver xendrm_driver = {
@@ -123,19 +194,22 @@ static struct drm_driver xendrm_driver = {
 	.enable_vblank             = xendrm_enable_vblank,
 	.disable_vblank            = xendrm_disable_vblank,
 	.get_vblank_counter        = drm_vblank_no_hw_counter,
-	.gem_free_object           = xendrm_gem_free_object,
-	.gem_vm_ops                = &drm_gem_cma_vm_ops,
+	.gem_free_object           = xendrm_free_object,
+	.gem_vm_ops                = &xendrm_gem_vm_ops,
 	.prime_handle_to_fd        = drm_gem_prime_handle_to_fd,
 	.prime_fd_to_handle        = drm_gem_prime_fd_to_handle,
 	.gem_prime_import          = drm_gem_prime_import,
 	.gem_prime_export          = drm_gem_prime_export,
+#ifdef CONFIG_DRM_GEM_CMA_HELPER
 	.gem_prime_get_sg_table    = drm_gem_cma_prime_get_sg_table,
 	.gem_prime_import_sg_table = drm_gem_cma_prime_import_sg_table,
 	.gem_prime_vmap            = drm_gem_cma_prime_vmap,
 	.gem_prime_vunmap          = drm_gem_cma_prime_vunmap,
 	.gem_prime_mmap            = drm_gem_cma_prime_mmap,
+#else
+	.dumb_map_offset           = xendrm_dumb_map_offset,
+#endif
 	.dumb_create               = xendrm_dumb_create,
-	.dumb_map_offset           = drm_gem_cma_dumb_map_offset,
 	.dumb_destroy              = xendrm_dumb_destroy,
 	.fops                      = &xendrm_fops,
 	.name                      = "xendrm-du",

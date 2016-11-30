@@ -869,12 +869,14 @@ int xdrv_sh_buf_grant_refs(struct xenbus_device *xb_dev,
 	otherend_id = xb_dev->otherend_id;
 	j = 0;
 	for (i = 0; i < num_pages_dir; i++) {
+		struct page *page;
+
 		cur_ref = gnttab_claim_grant_reference(&priv_gref_head);
 		if (cur_ref < 0)
 			return cur_ref;
+		page = vmalloc_to_page(buf->vdirectory + XEN_PAGE_SIZE * i);
 		gnttab_grant_foreign_access_ref(cur_ref, otherend_id,
-			vmalloc_to_gfn(buf->vdirectory +
-				XEN_PAGE_SIZE * i), 0);
+			xen_page_to_gfn(page), 0);
 		buf->grefs[j++] = cur_ref;
 	}
 	for (i = 0; i < num_pages_vbuffer; i++) {
