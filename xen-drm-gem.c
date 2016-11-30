@@ -126,6 +126,15 @@ static int dma_common_mmap1(struct vm_area_struct *vma,
 	unsigned long pfn = dma_addr >> PAGE_SHIFT;
 	unsigned long off = vma->vm_pgoff;
 
+
+/*
+vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+sets these bits comparing + to PAGE_SHARED
+_PAGE_BIT_PSE/_PAGE_BIT_PAT
+_PAGE_BIT_PCD 
+*/
+	DRM_ERROR("pgprot_noncached(vma->vm_page_prot) %lxu\n", pgprot_val(pgprot_noncached(vma->vm_page_prot)));
+	DRM_ERROR("forcing to %lxu\n", pgprot_val(PAGE_SHARED));
 	vma->vm_page_prot = PAGE_SHARED;
 
 	/*
