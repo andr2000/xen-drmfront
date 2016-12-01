@@ -64,6 +64,7 @@ struct xdrv_evtchnl_info {
 	int gref;
 	int port;
 	int irq;
+	int index;
 	/* state of the event channel */
 	enum xdrv_evtchnl_state state;
 	enum xdrv_evtchnl_type type;
@@ -505,8 +506,7 @@ static irqreturn_t xdrv_evtchnl_interrupt_evt(int irq, void *dev_id)
 		case XENDISPL_EVT_PG_FLIP:
 			if (likely(xendispl_front_funcs.on_page_flip)) {
 				xendispl_front_funcs.on_page_flip(
-					drv_info->ddrv_pdev,
-					event->op.pg_flip.conn_idx,
+					drv_info->ddrv_pdev, channel->index,
 					event->op.pg_flip.fb_cookie);
 			}
 			break;
@@ -571,7 +571,7 @@ static void xdrv_evtchnl_free_all(struct xdrv_info *drv_info)
 	drv_info->evt_pairs = NULL;
 }
 
-static int xdrv_evtchnl_alloc(struct xdrv_info *drv_info,
+static int xdrv_evtchnl_alloc(struct xdrv_info *drv_info, int index,
 	struct xdrv_evtchnl_info *evt_channel,
 	enum xdrv_evtchnl_type type)
 {
@@ -582,6 +582,7 @@ static int xdrv_evtchnl_alloc(struct xdrv_info *drv_info,
 	int ret;
 
 	evt_channel->type = type;
+	evt_channel->index = index;
 	evt_channel->drv_info = drv_info;
 	evt_channel->state = EVTCHNL_STATE_DISCONNECTED;
 	evt_channel->gref = GRANT_INVALID_REF;
@@ -633,7 +634,7 @@ fail:
 	return ret;
 }
 
-static int xdrv_evtchnl_create(struct xdrv_info *drv_info,
+static int xdrv_evtchnl_create(struct xdrv_info *drv_info, int index,
 	struct xdrv_evtchnl_info *evt_channel, enum xdrv_evtchnl_type type,
 	const char *path, const char *node_ring,
 	const char *node_chnl)
@@ -642,7 +643,7 @@ static int xdrv_evtchnl_create(struct xdrv_info *drv_info,
 	int ret;
 
 	/* allocate and open control channel */
-	ret = xdrv_evtchnl_alloc(drv_info, evt_channel, type);
+	ret = xdrv_evtchnl_alloc(drv_info, index, evt_channel, type);
 	if (ret < 0) {
 		message = "allocating event channel";
 		goto fail;
@@ -693,7 +694,7 @@ static int xdrv_evtchnl_create_all(struct xdrv_info *drv_info)
 		goto fail;
 	}
 	for (conn = 0; conn < plat_data->num_connectors; conn++) {
-		ret = xdrv_evtchnl_create(drv_info,
+		ret = xdrv_evtchnl_create(drv_info, conn,
 			&drv_info->evt_pairs[conn].ctrl,
 			EVTCHNL_TYPE_CTRL,
 			plat_data->connectors[conn].xenstore_path,
@@ -701,7 +702,7 @@ static int xdrv_evtchnl_create_all(struct xdrv_info *drv_info)
 			XENDISPL_FIELD_CTRL_CHANNEL);
 		if (ret < 0)
 			goto fail;
-		ret = xdrv_evtchnl_create(drv_info,
+		ret = xdrv_evtchnl_create(drv_info, conn,
 			&drv_info->evt_pairs[conn].evt,
 			EVTCHNL_TYPE_EVT,
 			plat_data->connectors[conn].xenstore_path,
