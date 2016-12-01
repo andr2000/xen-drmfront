@@ -145,48 +145,6 @@ static struct drm_driver xendrm_driver = {
 	.minor                     = 0,
 };
 
-/* Unprivileged guests (i.e. ones without hardware) are not permitted to
- * make mappings with anything other than a writeback memory type
- * So, we need to override mmap used by the kernel and make changes
- * to vma->vm_page_prot
- * N.B. this is almost the original dma_common_mmap altered
- */
-static int xendrm_mmap(struct device *dev, struct vm_area_struct *vma,
-	void *cpu_addr, dma_addr_t dma_addr, size_t size, unsigned long attrs)
-{
-	int ret = -ENXIO;
-#if defined(CONFIG_MMU) && !defined(CONFIG_ARCH_NO_COHERENT_DMA_MMAP)
-	unsigned long user_count = vma_pages(vma);
-	unsigned long count = PAGE_ALIGN(size) >> PAGE_SHIFT;
-	unsigned long pfn = page_to_pfn(virt_to_page(cpu_addr));
-	unsigned long off = vma->vm_pgoff;
-
-#ifdef CONFIG_XEN
-	vma->vm_page_prot = PAGE_SHARED;
-#else
-	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
-#endif
-	if (dma_mmap_from_coherent(dev, vma, cpu_addr, size, &ret))
-		return ret;
-	if (off < count && user_count <= (count - off)) {
-		ret = remap_pfn_range(vma, vma->vm_start,
-			pfn + off, user_count << PAGE_SHIFT,
-			vma->vm_page_prot);
-	}
-#endif	/* CONFIG_MMU && !CONFIG_ARCH_NO_COHERENT_DMA_MMAP */
-	return ret;
-}
-
-static void xendrm_setup_dma_map_ops(struct xendrm_du_device *xendrm_du)
-{
-	struct device *dev;
-
-	dev = xendrm_du->ddev->dev;
-	xendrm_du->dma_map_ops = *(get_dma_ops(dev));
-	xendrm_du->dma_map_ops.mmap = xendrm_mmap;
-	dev->archdata.dma_ops = &xendrm_du->dma_map_ops;
-}
-
 int xendrm_probe(struct platform_device *pdev,
 	struct xendispl_front_funcs *xendrm_front_funcs)
 {
@@ -211,7 +169,6 @@ int xendrm_probe(struct platform_device *pdev,
 		return -ENOMEM;
 
 	xendrm_du->ddev = ddev;
-	xendrm_setup_dma_map_ops(xendrm_du);
 	/*
 	 * FIXME: assume 1 CRTC and 1 Encoder per each connector
 	 */

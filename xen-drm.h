@@ -34,7 +34,6 @@ struct xendrm_du_device {
 	int num_crtcs;
 	struct xendrm_plat_data *platdata;
 	struct xendrm_du_crtc crtcs[XENDRM_DU_MAX_CRTCS];
-	struct dma_map_ops dma_map_ops;
 };
 
 struct xendrm_cfg_connector {

@@ -111,6 +111,8 @@ struct xdrv_info {
 
 	/* dumb buffers */
 	struct xdrv_shared_buffer_info *dumb_buf;
+
+	struct dma_map_ops dma_map_ops;
 };
 
 struct DRMIF_TO_KERN_ERROR {
@@ -316,8 +318,53 @@ static struct xendispl_front_funcs xendispl_front_funcs = {
 	.page_flip = xendispl_front_page_flip,
 };
 
+/* Unprivileged guests (i.e. ones without hardware) are not permitted to
+ * make mappings with anything other than a writeback memory type
+ * So, we need to override mmap used by the kernel and make changes
+ * to vma->vm_page_prot
+ * N.B. this is almost the original dma_common_mmap altered
+ */
+static int xdrv_mmap(struct device *dev, struct vm_area_struct *vma,
+	void *cpu_addr, dma_addr_t dma_addr, size_t size, unsigned long attrs)
+{
+	int ret = -ENXIO;
+#if defined(CONFIG_MMU) && !defined(CONFIG_ARCH_NO_COHERENT_DMA_MMAP)
+	unsigned long user_count = vma_pages(vma);
+	unsigned long count = PAGE_ALIGN(size) >> PAGE_SHIFT;
+	unsigned long pfn = page_to_pfn(virt_to_page(cpu_addr));
+	unsigned long off = vma->vm_pgoff;
+
+#ifdef CONFIG_XEN
+	vma->vm_page_prot = PAGE_SHARED;
+#else
+	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+#endif
+	if (dma_mmap_from_coherent(dev, vma, cpu_addr, size, &ret))
+		return ret;
+	if (off < count && user_count <= (count - off)) {
+		ret = remap_pfn_range(vma, vma->vm_start,
+			pfn + off, user_count << PAGE_SHIFT,
+			vma->vm_page_prot);
+	}
+#endif	/* CONFIG_MMU && !CONFIG_ARCH_NO_COHERENT_DMA_MMAP */
+	return ret;
+}
+
+static void xdrv_setup_dma_map_ops(struct xdrv_info *xdrv_info,
+	struct device *dev)
+{
+	if (xdrv_info->dma_map_ops.mmap != xdrv_mmap) {
+		xdrv_info->dma_map_ops = *(get_dma_ops(dev));
+		xdrv_info->dma_map_ops.mmap = xdrv_mmap;
+	}
+	dev->archdata.dma_ops = &xdrv_info->dma_map_ops;
+}
+
 static int ddrv_probe(struct platform_device *pdev)
 {
+	struct xendrm_plat_data *platdata = dev_get_platdata(&pdev->dev);
+
+	xdrv_setup_dma_map_ops(platdata->xdrv_info, &pdev->dev);
 	return xendrm_probe(pdev, &xendispl_front_funcs);
 }
 
