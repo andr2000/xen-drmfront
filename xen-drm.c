@@ -213,8 +213,7 @@ int xendrm_remove(struct platform_device *pdev)
 	struct drm_device *drm_dev = xendrm_du->ddev;
 
 	drm_dev_unregister(drm_dev);
-	xendrm_du_modeset_cleanup(xendrm_du);
-	drm_vblank_cleanup(drm_dev);
+	drm_mode_config_cleanup(drm_dev);
 	drm_dev_unref(drm_dev);
 	return 0;
 }

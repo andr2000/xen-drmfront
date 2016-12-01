@@ -20,6 +20,5 @@
 struct xendrm_du_device;
 
 int xendrm_du_modeset_init(struct xendrm_du_device *xendrm_du);
-void xendrm_du_modeset_cleanup(struct xendrm_du_device *xendrm_du);
 
 #endif /* __XEN_DRM_KMS_H_ */

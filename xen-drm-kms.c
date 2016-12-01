@@ -99,9 +99,3 @@ fail:
 	drm_mode_config_cleanup(drm_dev);
 	return ret;
 }
-
-void xendrm_du_modeset_cleanup(struct xendrm_du_device *xendrm_du)
-{
-	struct drm_device *drm_dev = xendrm_du->ddev;
-	drm_mode_config_cleanup(drm_dev);
-}

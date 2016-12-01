@@ -507,6 +507,19 @@ static void xendrm_du_crtc_atomic_flush(struct drm_crtc *crtc,
 	}
 }
 
+void xendrm_du_crtc_early_unregister(struct drm_crtc *crtc)
+{
+	/* sif backend dies we will remove DRM driver while
+	 * still having a client drawing
+	 * in this case xendrm_du_crtc_disable won't be called
+	 * as usually, so need to cleanup now. (normally
+	 * drm_driver_unregister cannot be done while there is
+	 * a user-space application, thus DRM doesn't call vblank off,
+	 * making troubles to us)
+	 */
+	xendrm_du_crtc_disable(crtc);
+}
+
 static const struct drm_crtc_helper_funcs xendrm_du_drm_crtc_helper_funcs = {
 	.atomic_flush = xendrm_du_crtc_atomic_flush,
 	.enable = xendrm_du_crtc_enable,
@@ -520,6 +533,7 @@ static const struct drm_crtc_funcs xendrm_du_drm_crtc_funcs = {
 	.page_flip = xendrm_du_crtc_do_page_flip,
 	.reset = drm_atomic_helper_crtc_reset,
 	.set_config = xendrm_crtc_set_config,
+	.early_unregister = xendrm_du_crtc_early_unregister,
 };
 
 int xendrm_du_crtc_create(struct xendrm_du_device *xendrm_du,
