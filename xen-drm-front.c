@@ -439,7 +439,7 @@ static irqreturn_t xdrv_evtchnl_interrupt_ctrl(int irq, void *dev_id)
 
  again:
 	rp = channel->u.ctrl.ring.sring->rsp_prod;
-	rmb(); /* Ensure we see queued responses up to 'rp'. */
+	virt_rmb(); /* Ensure we see queued responses up to 'rp'. */
 
 	for (i = channel->u.ctrl.ring.rsp_cons; i != rp; i++) {
 		resp = RING_GET_RESPONSE(&channel->u.ctrl.ring, i);
@@ -493,10 +493,10 @@ static irqreturn_t xdrv_evtchnl_interrupt_evt(int irq, void *dev_id)
 		goto out;
 
 	prod = page->in_prod;
+	/* ensure we see ring contents up to prod */
+	virt_rmb();
 	if (prod == page->in_cons)
 		goto out;
-	/* ensure we see ring contents up to prod */
-	rmb();
 	for (cons = page->in_cons; cons != prod; cons++) {
 		struct xendispl_evt *event;
 
@@ -512,9 +512,9 @@ static irqreturn_t xdrv_evtchnl_interrupt_evt(int irq, void *dev_id)
 			break;
 		}
 	}
-	/* ensure we got ring contents */
-	mb();
 	page->in_cons = cons;
+	/* ensure ring contents */
+	virt_wmb();
 	notify_remote_via_irq(channel->irq);
 
 out:
