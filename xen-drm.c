@@ -110,8 +110,8 @@ u32 xendrm_get_vblank_counter(struct drm_device *dev, unsigned int pipe)
 		return 0;
 	{
 		struct xendrm_du_crtc *du_crtc = &xendrm_du->crtcs[pipe];
-	DRM_ERROR("***************************************** xendrm_get_vblank_counter %d cnt %d pipe %d\n",
-		du_crtc->index, atomic_read(&du_crtc->vblank_cnt), pipe);
+//	DRM_ERROR("***************************************** xendrm_get_vblank_counter %d cnt %d pipe %d\n",
+//		du_crtc->index, atomic_read(&du_crtc->vblank_cnt), pipe);
 	}
 	return xendrm_du_crtc_get_vblank_counter(&xendrm_du->crtcs[pipe]);
 }
