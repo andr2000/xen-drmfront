@@ -305,7 +305,6 @@ int xendispl_front_page_flip(struct xdrv_info *drv_info, int conn_idx,
 	evtchnl = &drv_info->evt_pairs[conn_idx].ctrl;
 	spin_lock_irqsave(&drv_info->io_lock, flags);
 	req = ddrv_be_prepare_req(evtchnl, XENDISPL_OP_PG_FLIP);
-	req->op.pg_flip.conn_idx = conn_idx;
 	req->op.pg_flip.fb_cookie = fb_cookie;
 	return ddrv_be_stream_do_io(evtchnl, req, flags);
 }
