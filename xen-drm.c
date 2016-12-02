@@ -102,6 +102,20 @@ static void xendrm_on_page_flip(struct platform_device *pdev,
 	xendrm_du_crtc_on_page_flip(&xendrm_du->crtcs[conn_idx], fb_cookie);
 }
 
+u32 xendrm_get_vblank_counter(struct drm_device *dev, unsigned int pipe)
+{
+	struct xendrm_du_device *xendrm_du = dev->dev_private;
+
+	if (unlikely(pipe >= xendrm_du->num_crtcs))
+		return 0;
+	{
+		struct xendrm_du_crtc *du_crtc = &xendrm_du->crtcs[pipe];
+	DRM_ERROR("***************************************** xendrm_get_vblank_counter %d cnt %d pipe %d\n",
+		du_crtc->index, atomic_read(&du_crtc->vblank_cnt), pipe);
+	}
+	return xendrm_du_crtc_get_vblank_counter(&xendrm_du->crtcs[pipe]);
+}
+
 static const struct file_operations xendrm_fops = {
 	.owner          = THIS_MODULE,
 	.open           = drm_open,
@@ -122,7 +136,7 @@ static struct drm_driver xendrm_driver = {
 	.get_vblank_counter        = drm_vblank_count,
 	.enable_vblank             = xendrm_enable_vblank,
 	.disable_vblank            = xendrm_disable_vblank,
-	.get_vblank_counter        = drm_vblank_no_hw_counter,
+	.get_vblank_counter        = xendrm_get_vblank_counter,
 	.gem_free_object           = xendrm_gem_free_object,
 	.gem_vm_ops                = &drm_gem_cma_vm_ops,
 	.prime_handle_to_fd        = drm_gem_prime_handle_to_fd,

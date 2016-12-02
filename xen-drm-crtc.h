@@ -49,8 +49,9 @@ struct xendrm_du_crtc {
 	struct timer_list timer_vblank;
 	spinlock_t timer_lock;
 	unsigned long timer_period;
-	int timer_pf_event_to_cnt;
+	atomic_t timer_pf_event_to_cnt;
 	int timer_pf_event_to;
+	atomic_t vblank_cnt;
 };
 
 int xendrm_du_crtc_create(struct xendrm_du_device *xendrm_du,
@@ -62,5 +63,6 @@ int xendrm_du_connector_create(struct xendrm_du_device *xendrm_du,
 
 void xendrm_du_crtc_on_page_flip(struct xendrm_du_crtc *du_crtc, uint64_t fb_cookie);
 void xendrm_du_crtc_enable_vblank(struct xendrm_du_crtc *du_crtc, bool enable);
+uint32_t xendrm_du_crtc_get_vblank_counter(struct xendrm_du_crtc *du_crtc);
 
 #endif /* __XEN_DRM_CRTC_H_ */
