@@ -217,3 +217,11 @@ int xendrm_remove(struct platform_device *pdev)
 	drm_dev_unref(drm_dev);
 	return 0;
 }
+
+void xendrm_unplug(struct platform_device *pdev)
+{
+	struct xendrm_du_device *xendrm_du = platform_get_drvdata(pdev);
+	struct drm_device *dev = xendrm_du->ddev;
+
+	drm_unplug_dev(dev);
+}

@@ -160,6 +160,8 @@ static inline struct xendispl_req *ddrv_be_prepare_req(
 	return req;
 }
 
+static void xdrv_be_on_disconnected(struct xdrv_info *drv_info);
+
 /* CAUTION!!! Call this with the spin lock held.
  * This function will release it
  */
@@ -178,8 +180,10 @@ static int ddrv_be_stream_do_io(struct xdrv_evtchnl_info *evtchnl,
 	ret = 0;
 	if (wait_for_completion_interruptible_timeout(
 			&evtchnl->u.ctrl.completion,
-			msecs_to_jiffies(VDRM_WAIT_BACK_MS)) <= 0)
+			msecs_to_jiffies(VDRM_WAIT_BACK_MS)) <= 0) {
+		xdrv_be_on_disconnected(evtchnl->drv_info);
 		ret = -ETIMEDOUT;
+	}
 	if (ret < 0)
 		return ret;
 	return drmif_to_kern_error(evtchnl->u.ctrl.resp_status);
@@ -388,6 +392,12 @@ static struct platform_driver ddrv_info = {
 		.name	= XENDISPL_DRIVER_NAME,
 	},
 };
+
+static void ddrv_unplug(struct xdrv_info *drv_info)
+{
+	if (drv_info->ddrv_pdev)
+		xendrm_unplug(drv_info->ddrv_pdev);
+}
 
 static void ddrv_cleanup(struct xdrv_info *drv_info)
 {
@@ -1068,8 +1078,14 @@ static int xdrv_be_on_connected(struct xdrv_info *drv_info)
 
 static void xdrv_be_on_disconnected(struct xdrv_info *drv_info)
 {
-	xdrv_remove_internal(drv_info);
 	xdrv_evtchnl_set_state(drv_info, EVTCHNL_STATE_DISCONNECTED);
+	ddrv_unplug(drv_info);
+}
+
+static void xdrv_be_on_initializing(struct xdrv_info *drv_info)
+{
+	/* if there is a DRM driver force remove it */
+	xdrv_remove_internal(drv_info);
 }
 
 static void xdrv_be_on_changed(struct xenbus_device *xb_dev,
@@ -1095,7 +1111,7 @@ static void xdrv_be_on_changed(struct xenbus_device *xb_dev,
 			break;
 		/* recovering after backend unexpected closure */
 		mutex_lock(&drv_info->mutex);
-		xdrv_be_on_disconnected(drv_info);
+		xdrv_be_on_initializing(drv_info);
 		mutex_unlock(&drv_info->mutex);
 		xenbus_switch_state(xb_dev, XenbusStateInitialising);
 		break;
