@@ -22,6 +22,8 @@
 
 #include <linux/wait.h>
 
+#include "xen-drm-timer.h"
+
 struct xendrm_du_device;
 struct xendrm_cfg_connector;
 
@@ -47,11 +49,8 @@ struct xendrm_du_crtc {
 	bool pg_flip_flush_queued;
 	bool pg_flip_be_ntfy_fired;
 	wait_queue_head_t flip_wait;
-	struct timer_list timer_vblank;
-	spinlock_t timer_lock;
-	unsigned long timer_period;
-	atomic_t timer_pf_event_to_cnt;
-	int timer_pf_event_to;
+
+	struct xendrm_du_timer vblank_timer;
 };
 
 int xendrm_du_crtc_create(struct xendrm_du_device *xendrm_du,
