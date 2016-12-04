@@ -375,6 +375,7 @@ static int xendrm_crtc_set_config(struct drm_mode_set *set)
 			return ret;
 		}
 	} else {
+		xendrm_du_timer_cleanup(&du_crtc->vblank_timer);
 		ret = xendrm_du->front_funcs->mode_set(du_crtc,
 			0, 0, 0, 0, 0, 0);
 		if (ret < 0)
