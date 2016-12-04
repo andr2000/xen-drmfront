@@ -42,6 +42,7 @@ struct xendrm_du_crtc {
 	} props;
 	bool enabled;
 	/* vblank and flip handling */
+	spinlock_t pg_flip_lock;
 	struct drm_pending_vblank_event *pg_flip_event;
 	bool pg_flip_flush_queued;
 	bool pg_flip_be_ntfy_fired;
@@ -49,7 +50,7 @@ struct xendrm_du_crtc {
 	struct timer_list timer_vblank;
 	spinlock_t timer_lock;
 	unsigned long timer_period;
-	int timer_pf_event_to_cnt;
+	atomic_t timer_pf_event_to_cnt;
 	int timer_pf_event_to;
 };
 
