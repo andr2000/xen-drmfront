@@ -66,19 +66,6 @@ xendrm_du_drm_connector_detect(struct drm_connector *connector, bool force)
 
 #define XENDRM_NUM_VIDEO_MODES	1
 
-static const struct videomode xendrm_def_videomode = {
-	.pixelclock = 60 * 1024 * 768,
-	.hactive = 1024,
-	.hfront_porch = 0,
-	.hback_porch = 0,
-	.hsync_len = 0,
-	.vactive = 768,
-	.vfront_porch = 0,
-	.vback_porch = 0,
-	.vsync_len = 0,
-	.flags = 0,
-};
-
 static int xendrm_du_drm_connector_get_modes(struct drm_connector *connector)
 {
 	struct xendrm_du_connector *du_connector;
@@ -89,11 +76,10 @@ static int xendrm_du_drm_connector_get_modes(struct drm_connector *connector)
 	mode = drm_mode_create(connector->dev);
 	if (!mode)
 		return 0;
-	videomode = xendrm_def_videomode;
+	memset(&videomode, 0, sizeof(videomode));
 	du_connector = to_xendrm_connector(connector);
 	videomode.hactive = du_connector->width;
 	videomode.vactive = du_connector->height;
-	/* fixup the default value */
 	width = videomode.hactive + videomode.hfront_porch +
 		videomode.hback_porch + videomode.hsync_len;
 	height = videomode.vactive + videomode.vfront_porch +
