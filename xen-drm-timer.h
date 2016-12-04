@@ -18,6 +18,7 @@
 #define __XEN_DRM_TIMER_H_
 
 #include <linux/time.h>
+#include <linux/interrupt.h>
 
 struct xendrm_du_timer_callbacks {
 	void (*on_period)(unsigned long data);
@@ -32,6 +33,8 @@ struct xendrm_du_timer {
 	int to_period;
 	unsigned long clb_private;
 	struct xendrm_du_timer_callbacks *clb;
+	atomic_t running;
+	struct tasklet_struct tasklet;
 };
 
 int xendrm_du_timer_init(struct xendrm_du_timer *timer,

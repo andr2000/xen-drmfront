@@ -19,6 +19,7 @@
 static inline void xendrm_du_timer_restart(struct xendrm_du_timer *timer)
 {
 	mod_timer(&timer->timer, jiffies + timer->period);
+	atomic_set(&timer->running, 1);
 }
 
 void xendrm_du_timer_start(struct xendrm_du_timer *timer)
@@ -39,12 +40,14 @@ void xendrm_du_timer_stop(struct xendrm_du_timer *timer)
 {
 	unsigned long flags;
 
+	atomic_set(&timer->running, 0);
 	spin_lock_irqsave(&timer->lock, flags);
 	del_timer_sync(&timer->timer);
+	tasklet_kill(&timer->tasklet);
 	spin_unlock_irqrestore(&timer->lock, flags);
 }
 
-static void xendrm_du_timer_callback(unsigned long data)
+static void xendrm_du_timer_handler(unsigned long data)
 {
 	struct xendrm_du_timer *timer = (struct xendrm_du_timer *)data;
 	unsigned long flags;
@@ -57,6 +60,14 @@ static void xendrm_du_timer_callback(unsigned long data)
 	spin_unlock_irqrestore(&timer->lock, flags);
 }
 
+static void xendrm_du_timer_callback(unsigned long data)
+{
+	struct xendrm_du_timer *timer = (struct xendrm_du_timer *)data;
+
+	if (likely(atomic_read(&timer->running)))
+		tasklet_schedule(&timer->tasklet);
+}
+
 int xendrm_du_timer_init(struct xendrm_du_timer *timer,
 	unsigned long clb_private, struct xendrm_du_timer_callbacks *clb)
 {
@@ -67,6 +78,8 @@ int xendrm_du_timer_init(struct xendrm_du_timer *timer,
 	setup_timer(&timer->timer, xendrm_du_timer_callback,
 		(unsigned long)timer);
 	spin_lock_init(&timer->lock);
+	tasklet_init(&timer->tasklet, xendrm_du_timer_handler,
+		(unsigned long)timer);
 	return 0;
 }
 
