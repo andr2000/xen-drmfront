@@ -27,6 +27,8 @@
 struct xendrm_du_device;
 struct xendrm_cfg_connector;
 
+#define XENDRM_CRTC_VREFRESH_HZ	60
+
 struct xendrm_du_connector {
 	struct drm_connector base;
 	int width, height;

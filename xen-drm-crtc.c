@@ -85,7 +85,7 @@ static int xendrm_du_drm_connector_get_modes(struct drm_connector *connector)
 		videomode.hback_porch + videomode.hsync_len;
 	height = videomode.vactive + videomode.vfront_porch +
 		videomode.vback_porch + videomode.vsync_len;
-	videomode.pixelclock = width * height * 60;
+	videomode.pixelclock = width * height * XENDRM_CRTC_VREFRESH_HZ;
 	mode->type = DRM_MODE_TYPE_PREFERRED | DRM_MODE_TYPE_DRIVER;
 	drm_display_mode_from_videomode(&videomode, mode);
 	drm_mode_probed_add(connector, mode);
