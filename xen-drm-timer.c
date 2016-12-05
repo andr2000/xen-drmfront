@@ -126,8 +126,8 @@ void xendrm_du_timer_cleanup(struct xendrm_du_timer *timer)
 {
 	unsigned long flags;
 
-	spin_lock_irqsave(&timer->lock, flags);
 	xendrm_du_timer_stop(timer, true);
+	spin_lock_irqsave(&timer->lock, flags);
 	tasklet_kill(&timer->tasklet);
 	spin_unlock_irqrestore(&timer->lock, flags);
 }
