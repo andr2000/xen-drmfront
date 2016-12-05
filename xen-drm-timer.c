@@ -14,6 +14,8 @@
  * Copyright (C) 2016 EPAM Systems Inc.
  */
 
+#include <drm/drmP.h>
+
 #include "xen-drm-timer.h"
 
 void xendrm_du_timer_start(struct xendrm_du_timer *timer)
@@ -72,8 +74,13 @@ static enum hrtimer_restart xendrm_du_timer_callback(struct hrtimer *hrtimer)
 		container_of(hrtimer, struct xendrm_du_timer, timer);
 
 	if (likely(atomic_read(&timer->running))) {
+		uint64_t num_overruns;
+
 		tasklet_schedule(&timer->tasklet);
-		hrtimer_forward_now(hrtimer, timer->period);
+		num_overruns = hrtimer_forward_now(hrtimer, timer->period);
+		if (unlikely(num_overruns > 1))
+			DRM_ERROR("vblank emulation timed out, %llu overruns\n",
+				num_overruns);
 		return HRTIMER_RESTART;
 	}
 	return HRTIMER_NORESTART;
