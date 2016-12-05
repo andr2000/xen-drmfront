@@ -22,12 +22,12 @@
 
 #include <linux/wait.h>
 
-#include "xen-drm-timer.h"
-
 struct xendrm_du_device;
 struct xendrm_cfg_connector;
 
 #define XENDRM_CRTC_VREFRESH_HZ	60
+/* timeout for page flip event reception */
+#define XENDRM_CRTC_PFLIP_TO_MS	1000
 
 struct xendrm_du_connector {
 	struct drm_connector base;
@@ -51,8 +51,6 @@ struct xendrm_du_crtc {
 	bool pg_flip_flush_queued;
 	bool pg_flip_be_ntfy_fired;
 	wait_queue_head_t flip_wait;
-
-	struct xendrm_du_timer vblank_timer;
 };
 
 int xendrm_du_crtc_create(struct xendrm_du_device *xendrm_du,
@@ -62,7 +60,7 @@ int xendrm_du_encoder_create(struct xendrm_du_device *xendrm_du,
 int xendrm_du_connector_create(struct xendrm_du_device *xendrm_du,
 	struct xendrm_du_crtc *du_crtc, struct xendrm_cfg_connector *cfg);
 
-void xendrm_du_crtc_on_page_flip(struct xendrm_du_crtc *du_crtc, uint64_t fb_cookie);
-void xendrm_du_crtc_enable_vblank(struct xendrm_du_crtc *du_crtc, bool enable);
+void xendrm_du_crtc_on_page_flip_done(struct xendrm_du_crtc *du_crtc, uint64_t fb_cookie);
+void xendrm_du_crtc_on_page_flip_to(struct xendrm_du_crtc *du_crtc);
 
 #endif /* __XEN_DRM_CRTC_H_ */

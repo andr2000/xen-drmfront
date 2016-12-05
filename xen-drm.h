@@ -22,6 +22,7 @@
 #include <linux/platform_device.h>
 
 #include "xen-drm-crtc.h"
+#include "xen-drm-timer.h"
 
 #define XENDRM_DU_MAX_CRTCS	4
 
@@ -34,6 +35,11 @@ struct xendrm_du_device {
 	int num_crtcs;
 	struct xendrm_plat_data *platdata;
 	struct xendrm_du_crtc crtcs[XENDRM_DU_MAX_CRTCS];
+
+	/* vblank and page flip handling */
+	struct xendrm_du_timer vblank_timer;
+	atomic_t page_flip_to_cnt[XENDRM_DU_MAX_CRTCS];
+	atomic_t vblank_enabled[XENDRM_DU_MAX_CRTCS];
 };
 
 struct xendrm_cfg_connector {
@@ -53,6 +59,8 @@ struct xendrm_plat_data {
 int xendrm_probe(struct platform_device *pdev,
 	struct xendispl_front_funcs *xendrm_front_funcs);
 int xendrm_remove(struct platform_device *pdev);
+
+void xendrm_vtimer_restart_to(struct xendrm_du_device *xendrm_du, int index);
 
 #endif /* __XEN_DRM_H*/
 

@@ -29,7 +29,9 @@ int xendrm_enable_vblank(struct drm_device *dev, unsigned int pipe)
 
 	if (unlikely(pipe >= xendrm_du->num_crtcs))
 		return -EINVAL;
-	xendrm_du_crtc_enable_vblank(&xendrm_du->crtcs[pipe], true);
+	if (atomic_read(&xendrm_du->vblank_enabled[pipe]) == 0)
+		xendrm_du_timer_start(&xendrm_du->vblank_timer);
+	atomic_set(&xendrm_du->vblank_enabled[pipe], 1);
 	return 0;
 }
 
@@ -39,7 +41,9 @@ void xendrm_disable_vblank(struct drm_device *dev, unsigned int pipe)
 
 	if (unlikely(pipe >= xendrm_du->num_crtcs))
 		return;
-	xendrm_du_crtc_enable_vblank(&xendrm_du->crtcs[pipe], false);
+	if (atomic_read(&xendrm_du->vblank_enabled[pipe]))
+		xendrm_du_timer_stop(&xendrm_du->vblank_timer, false);
+	atomic_set(&xendrm_du->vblank_enabled[pipe], 0);
 }
 
 static int xendrm_dumb_create(struct drm_file *file_priv, struct drm_device *dev,
@@ -94,7 +98,30 @@ static void xendrm_on_page_flip(struct platform_device *pdev,
 
 	if (unlikely(conn_idx >= xendrm_du->num_crtcs))
 		return;
-	xendrm_du_crtc_on_page_flip(&xendrm_du->crtcs[conn_idx], fb_cookie);
+	xendrm_du_crtc_on_page_flip_done(&xendrm_du->crtcs[conn_idx], fb_cookie);
+}
+
+static void xendrm_handle_vblank(unsigned long data)
+{
+	struct xendrm_du_device *xendrm_du = (struct xendrm_du_device *)data;
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(xendrm_du->crtcs); i++) {
+		if (atomic_read(&xendrm_du->vblank_enabled[i])) {
+			struct xendrm_du_crtc *du_crtc = &xendrm_du->crtcs[i];
+
+			drm_crtc_handle_vblank(&du_crtc->crtc);
+			if (unlikely(atomic_dec_and_test(
+					&xendrm_du->page_flip_to_cnt[i])))
+				xendrm_du_crtc_on_page_flip_to(du_crtc);
+		}
+	}
+}
+
+void xendrm_vtimer_restart_to(struct xendrm_du_device *xendrm_du, int index)
+{
+	atomic_set(&xendrm_du->page_flip_to_cnt[index],
+		xendrm_du->vblank_timer.to_period);
 }
 
 static const struct file_operations xendrm_fops = {
@@ -140,6 +167,10 @@ static struct drm_driver xendrm_driver = {
 	.minor                     = 0,
 };
 
+static struct xendrm_du_timer_callbacks vblank_timer_ops = {
+	.on_period = xendrm_handle_vblank,
+};
+
 int xendrm_probe(struct platform_device *pdev,
 	struct xendispl_front_funcs *xendrm_front_funcs)
 {
@@ -183,6 +214,15 @@ int xendrm_probe(struct platform_device *pdev,
 				"failed to initialize DRM/KMS (%d)\n", ret);
 		goto fail;
 	}
+	/* setup vblank emulation: all CRTCs are set for
+	 * XENDRM_CRTC_VREFRESH_HZ and lots of operations during vblank
+	 * interrupt are handled under drm_dev->event_lock. This allows
+	 * having a single vblank "interrupt"
+	 */
+	xendrm_du_timer_init(&xendrm_du->vblank_timer,
+		(unsigned long)xendrm_du, &vblank_timer_ops);
+	xendrm_du_timer_setup(&xendrm_du->vblank_timer,
+		XENDRM_CRTC_VREFRESH_HZ, XENDRM_CRTC_PFLIP_TO_MS);
 	ddev->irq_enabled = 1;
 
 	/* Register the DRM device with the core and the connectors,
@@ -207,6 +247,7 @@ int xendrm_remove(struct platform_device *pdev)
 	struct xendrm_du_device *xendrm_du = platform_get_drvdata(pdev);
 	struct drm_device *drm_dev = xendrm_du->ddev;
 
+	xendrm_du_timer_cleanup(&xendrm_du->vblank_timer);
 	drm_dev_unregister(drm_dev);
 	drm_mode_config_cleanup(drm_dev);
 	drm_dev_unref(drm_dev);

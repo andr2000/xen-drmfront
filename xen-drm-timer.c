@@ -21,37 +21,37 @@ void xendrm_du_timer_start(struct xendrm_du_timer *timer)
 	unsigned long flags;
 
 	spin_lock_irqsave(&timer->lock, flags);
-	atomic_set(&timer->running, 1);
+	atomic_inc(&timer->running);
+	if (atomic_read(&timer->running) == 1) {
 #ifdef CONFIG_HIGH_RES_TIMERS
-	hrtimer_start(&timer->timer, timer->period, HRTIMER_MODE_REL);
+		hrtimer_start(&timer->timer, timer->period, HRTIMER_MODE_REL);
 #else
-	mod_timer(&timer->timer, jiffies + timer->period);
+		mod_timer(&timer->timer, jiffies + timer->period);
 #endif
+	}
 	spin_unlock_irqrestore(&timer->lock, flags);
 }
 
-void xendrm_du_timer_restart_to(struct xendrm_du_timer *timer)
-{
-	atomic_set(&timer->to_cnt, timer->to_period);
-}
-
-void xendrm_du_timer_stop(struct xendrm_du_timer *timer)
+void xendrm_du_timer_stop(struct xendrm_du_timer *timer, bool force)
 {
 	unsigned long flags;
 
-	atomic_set(&timer->running, 0);
+	if (!atomic_read(&timer->running))
+		return;
 	spin_lock_irqsave(&timer->lock, flags);
+	if (force || atomic_dec_and_test(&timer->running)) {
 #ifdef CONFIG_HIGH_RES_TIMERS
-	hrtimer_cancel(&timer->timer);
+		hrtimer_cancel(&timer->timer);
 #else
-	del_timer_sync(&timer->timer);
+		del_timer_sync(&timer->timer);
 #endif
-	/* this is the right place to kill tasklet, but DRM may call
-	 * us from drm_irq.c:vblank->disable_timer
-	 * it means that we might be in interrupt context now, so we cannot
-	 * safely kill tasklet: postpone until cleanup
-	 * running flag was set to 0, so tasklet won't reschedule
-	 */
+		/* this is the right place to kill tasklet, but DRM may call
+		 * us from drm_irq.c:vblank->disable_timer
+		 * it means that we might be in interrupt context now, so we
+		 * cannot safely kill tasklet: postpone until cleanup.
+		 * running counter was set to 0, so tasklet won't reschedule
+		 */
+	}
 	spin_unlock_irqrestore(&timer->lock, flags);
 }
 
@@ -62,8 +62,6 @@ static void xendrm_du_timer_handler(unsigned long data)
 
 	spin_lock_irqsave(&timer->lock, flags);
 	timer->clb->on_period(timer->clb_private);
-	if (unlikely(atomic_dec_and_test(&timer->to_cnt)))
-		timer->clb->on_timeout(timer->clb_private);
 	spin_unlock_irqrestore(&timer->lock, flags);
 }
 
@@ -129,6 +127,7 @@ void xendrm_du_timer_cleanup(struct xendrm_du_timer *timer)
 	unsigned long flags;
 
 	spin_lock_irqsave(&timer->lock, flags);
+	xendrm_du_timer_stop(timer, true);
 	tasklet_kill(&timer->tasklet);
 	spin_unlock_irqrestore(&timer->lock, flags);
 }

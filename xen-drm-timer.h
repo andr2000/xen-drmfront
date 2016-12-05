@@ -26,7 +26,6 @@
 
 struct xendrm_du_timer_callbacks {
 	void (*on_period)(unsigned long data);
-	void (*on_timeout)(unsigned long data);
 };
 
 struct xendrm_du_timer {
@@ -38,7 +37,6 @@ struct xendrm_du_timer {
 	unsigned long period;
 #endif
 	spinlock_t lock;
-	atomic_t to_cnt;
 	int to_period;
 	unsigned long clb_private;
 	struct xendrm_du_timer_callbacks *clb;
@@ -52,7 +50,6 @@ void xendrm_du_timer_setup(struct xendrm_du_timer *timer,
 	int freq_hz, int to_ms);
 void xendrm_du_timer_cleanup(struct xendrm_du_timer *timer);
 void xendrm_du_timer_start(struct xendrm_du_timer *timer);
-void xendrm_du_timer_stop(struct xendrm_du_timer *timer);
-void xendrm_du_timer_restart_to(struct xendrm_du_timer *timer);
+void xendrm_du_timer_stop(struct xendrm_du_timer *timer, bool force);
 
 #endif /* __XEN_DRM_TIMER_H_ */
