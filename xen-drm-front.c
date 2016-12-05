@@ -334,11 +334,8 @@ static int xdrv_mmap(struct device *dev, struct vm_area_struct *vma,
 	unsigned long pfn = page_to_pfn(virt_to_page(cpu_addr));
 	unsigned long off = vma->vm_pgoff;
 
-#ifdef CONFIG_XEN
 	vma->vm_page_prot = PAGE_SHARED;
-#else
-	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
-#endif
+
 	if (dma_mmap_from_coherent(dev, vma, cpu_addr, size, &ret))
 		return ret;
 	if (off < count && user_count <= (count - off)) {
