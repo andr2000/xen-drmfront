@@ -111,17 +111,22 @@ static void xendrm_handle_vblank(unsigned long data)
 			struct xendrm_du_crtc *du_crtc = &xendrm_du->crtcs[i];
 
 			drm_crtc_handle_vblank(&du_crtc->crtc);
-			if (unlikely(atomic_dec_and_test(
-					&xendrm_du->page_flip_to_cnt[i])))
-				xendrm_du_crtc_on_page_flip_to(du_crtc);
+			/* handle page flip time outs */
+			if (likely(atomic_read(&xendrm_du->pflip_to_cnt_armed[i])))
+				if (unlikely(atomic_dec_and_test(
+						&xendrm_du->pflip_to_cnt[i]))) {
+					atomic_set(&xendrm_du->pflip_to_cnt_armed[i], 0);
+					xendrm_du_crtc_on_page_flip_to(du_crtc);
+				}
 		}
 	}
 }
 
 void xendrm_vtimer_restart_to(struct xendrm_du_device *xendrm_du, int index)
 {
-	atomic_set(&xendrm_du->page_flip_to_cnt[index],
+	atomic_set(&xendrm_du->pflip_to_cnt[index],
 		xendrm_du->vblank_timer.to_period);
+	atomic_set(&xendrm_du->pflip_to_cnt_armed[index], 1);
 }
 
 static const struct file_operations xendrm_fops = {

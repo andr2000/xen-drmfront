@@ -38,7 +38,8 @@ struct xendrm_du_device {
 
 	/* vblank and page flip handling */
 	struct xendrm_du_timer vblank_timer;
-	atomic_t page_flip_to_cnt[XENDRM_DU_MAX_CRTCS];
+	atomic_t pflip_to_cnt[XENDRM_DU_MAX_CRTCS];
+	atomic_t pflip_to_cnt_armed[XENDRM_DU_MAX_CRTCS];
 	atomic_t vblank_enabled[XENDRM_DU_MAX_CRTCS];
 };
 
