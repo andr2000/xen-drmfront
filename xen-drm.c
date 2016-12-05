@@ -87,11 +87,6 @@ static int xendrm_dumb_destroy(struct drm_file *file,
 	return drm_gem_dumb_destroy(file, dev, handle);
 }
 
-void xendrm_gem_free_object(struct drm_gem_object *obj)
-{
-	drm_gem_cma_free_object(obj);
-}
-
 static void xendrm_on_page_flip(struct platform_device *pdev,
 	int conn_idx, uint64_t fb_cookie)
 {
@@ -123,7 +118,7 @@ static struct drm_driver xendrm_driver = {
 	.enable_vblank             = xendrm_enable_vblank,
 	.disable_vblank            = xendrm_disable_vblank,
 	.get_vblank_counter        = drm_vblank_no_hw_counter,
-	.gem_free_object           = xendrm_gem_free_object,
+	.gem_free_object           = drm_gem_cma_free_object,
 	.gem_vm_ops                = &drm_gem_cma_vm_ops,
 	.prime_handle_to_fd        = drm_gem_prime_handle_to_fd,
 	.prime_fd_to_handle        = drm_gem_prime_fd_to_handle,
