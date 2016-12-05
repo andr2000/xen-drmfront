@@ -15,6 +15,7 @@
  */
 
 #include "xen-drm-timer.h"
+#include "xen-drm-logs.h"
 
 void xendrm_du_timer_start(struct xendrm_du_timer *timer)
 {
@@ -25,6 +26,7 @@ void xendrm_du_timer_start(struct xendrm_du_timer *timer)
 	if (atomic_read(&timer->running) == 1) {
 #ifdef CONFIG_HIGH_RES_TIMERS
 		hrtimer_start(&timer->timer, timer->period, HRTIMER_MODE_REL);
+		LOG0("--------------------------------- hrtimer_start");
 #else
 		mod_timer(&timer->timer, jiffies + timer->period);
 #endif
@@ -40,6 +42,7 @@ void xendrm_du_timer_stop(struct xendrm_du_timer *timer, bool force)
 		return;
 	spin_lock_irqsave(&timer->lock, flags);
 	if (force || atomic_dec_and_test(&timer->running)) {
+		LOG0("--------------------------------- hrtimer_cancel");
 #ifdef CONFIG_HIGH_RES_TIMERS
 		hrtimer_cancel(&timer->timer);
 #else
@@ -59,10 +62,16 @@ static void xendrm_du_timer_handler(unsigned long data)
 {
 	struct xendrm_du_timer *timer = (struct xendrm_du_timer *)data;
 	unsigned long flags;
+	bool tmr_lock;
 
+	tmr_lock = spin_is_locked(&timer->lock);
+	LOG0("--------------------------------- tasklet lock %d", tmr_lock);
 	spin_lock_irqsave(&timer->lock, flags);
+	tmr_lock = spin_is_locked(&timer->lock);
+	LOG0("--------------------------------- under lock %d", tmr_lock);
 	timer->clb->on_period(timer->clb_private);
 	spin_unlock_irqrestore(&timer->lock, flags);
+	LOG0("--------------------------------- tasklet out");
 }
 
 #ifdef CONFIG_HIGH_RES_TIMERS
@@ -72,8 +81,11 @@ static enum hrtimer_restart xendrm_du_timer_callback(struct hrtimer *hrtimer)
 		container_of(hrtimer, struct xendrm_du_timer, timer);
 
 	if (likely(atomic_read(&timer->running))) {
+		int overruns;
+
 		tasklet_schedule(&timer->tasklet);
-		hrtimer_forward_now(hrtimer, timer->period);
+		overruns = hrtimer_forward_now(hrtimer, timer->period);
+		LOG0("--------------------------------- tasklet_schedule, overruns %d", overruns);
 		return HRTIMER_RESTART;
 	}
 	return HRTIMER_NORESTART;

@@ -44,6 +44,7 @@ void xendrm_disable_vblank(struct drm_device *dev, unsigned int pipe)
 	if (atomic_read(&xendrm_du->vblank_enabled[pipe]))
 		xendrm_du_timer_stop(&xendrm_du->vblank_timer, false);
 	atomic_set(&xendrm_du->vblank_enabled[pipe], 0);
+	DRM_ERROR("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! disable vblank on %d\n", pipe);
 }
 
 static int xendrm_dumb_create(struct drm_file *file_priv, struct drm_device *dev,
@@ -105,7 +106,12 @@ static void xendrm_handle_vblank(unsigned long data)
 {
 	struct xendrm_du_device *xendrm_du = (struct xendrm_du_device *)data;
 	int i;
+	bool event_lock, vblank_time_lock;
 
+	event_lock = spin_is_locked(&xendrm_du->ddev->event_lock);
+	vblank_time_lock = spin_is_locked(&xendrm_du->ddev->vblank_time_lock);
+	DRM_ERROR("------------------------------------ drm_crtc_handle_vblank evt %d vblank %d\n",
+		event_lock, vblank_time_lock);
 	for (i = 0; i < ARRAY_SIZE(xendrm_du->crtcs); i++) {
 		if (atomic_read(&xendrm_du->vblank_enabled[i])) {
 			struct xendrm_du_crtc *du_crtc = &xendrm_du->crtcs[i];
@@ -120,6 +126,7 @@ static void xendrm_handle_vblank(unsigned long data)
 				}
 		}
 	}
+	DRM_ERROR("------------------------------------ drm_crtc_handle_vblank out\n");
 }
 
 void xendrm_vtimer_restart_to(struct xendrm_du_device *xendrm_du, int index)
