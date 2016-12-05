@@ -630,29 +630,24 @@ fail:
 	return ret;
 }
 
-static int xdrv_evtchnl_create(struct xdrv_info *drv_info, int index,
-	struct xdrv_evtchnl_info *evt_channel, enum xdrv_evtchnl_type type,
+static int xdrv_evtchnl_publish(struct xenbus_transaction xbt,
+	struct xdrv_evtchnl_info *evt_channel,
 	const char *path, const char *node_ring,
 	const char *node_chnl)
 {
 	const char *message;
 	int ret;
 
-	/* allocate and open control channel */
-	ret = xdrv_evtchnl_alloc(drv_info, index, evt_channel, type);
-	if (ret < 0) {
-		message = "allocating event channel";
-		goto fail;
-	}
-	/* Write control channel ring reference */
-	ret = xenbus_printf(XBT_NIL, path, node_ring, "%u",
+	/* write control channel ring reference */
+	ret = xenbus_printf(xbt, path, node_ring, "%u",
 			evt_channel->gref);
 	if (ret < 0) {
 		message = "writing ring-ref";
 		goto fail;
 	}
 
-	ret = xenbus_printf(XBT_NIL, path, node_chnl, "%u",
+	/* write event channel ring reference */
+	ret = xenbus_printf(xbt, path, node_chnl, "%u",
 		evt_channel->port);
 	if (ret < 0) {
 		message = "writing event channel";
@@ -690,27 +685,68 @@ static int xdrv_evtchnl_create_all(struct xdrv_info *drv_info)
 		goto fail;
 	}
 	for (conn = 0; conn < plat_data->num_connectors; conn++) {
-		ret = xdrv_evtchnl_create(drv_info, conn,
+		ret = xdrv_evtchnl_alloc(drv_info, conn,
+			&drv_info->evt_pairs[conn].ctrl, EVTCHNL_TYPE_CTRL);
+		if (ret < 0) {
+			LOG0("Error allocating control channel");
+			goto fail;
+		}
+		ret = xdrv_evtchnl_alloc(drv_info, conn,
+			&drv_info->evt_pairs[conn].evt, EVTCHNL_TYPE_EVT);
+		if (ret < 0) {
+			LOG0("Error allocating in-event channel");
+			goto fail;
+		}
+	}
+	drv_info->num_evt_pairs = plat_data->num_connectors;
+	return 0;
+fail:
+	xdrv_evtchnl_free_all(drv_info);
+	return ret;
+}
+
+static int xdrv_evtchnl_publish_all(struct xdrv_info *drv_info)
+{
+	struct xenbus_transaction xbt;
+	struct xendrm_plat_data *plat_data;
+	int ret, conn;
+
+	plat_data = &drv_info->cfg_plat_data;
+again:
+	ret = xenbus_transaction_start(&xbt);
+	if (ret < 0) {
+		xenbus_dev_fatal(drv_info->xb_dev, ret, "starting transaction");
+		return ret;
+	}
+	for (conn = 0; conn < plat_data->num_connectors; conn++) {
+		ret = xdrv_evtchnl_publish(xbt,
 			&drv_info->evt_pairs[conn].ctrl,
-			EVTCHNL_TYPE_CTRL,
 			plat_data->connectors[conn].xenstore_path,
 			XENDISPL_FIELD_CTRL_RING_REF,
 			XENDISPL_FIELD_CTRL_CHANNEL);
 		if (ret < 0)
 			goto fail;
-		ret = xdrv_evtchnl_create(drv_info, conn,
+		ret = xdrv_evtchnl_publish(xbt,
 			&drv_info->evt_pairs[conn].evt,
-			EVTCHNL_TYPE_EVT,
 			plat_data->connectors[conn].xenstore_path,
 			XENDISPL_FIELD_EVT_RING_REF,
 			XENDISPL_FIELD_EVT_CHANNEL);
 		if (ret < 0)
 			goto fail;
 	}
-	drv_info->num_evt_pairs = plat_data->num_connectors;
+	ret = xenbus_transaction_end(xbt, 0);
+	if (ret < 0) {
+		if (ret == -EAGAIN)
+			goto again;
+		xenbus_dev_fatal(drv_info->xb_dev, ret,
+			"completing transaction");
+		goto fail_to_end;
+	}
 	return 0;
 fail:
-	xdrv_evtchnl_free_all(drv_info);
+	xenbus_transaction_end(xbt, 1);
+fail_to_end:
+	xenbus_dev_fatal(drv_info->xb_dev, ret, "writing XenStore");
 	return ret;
 }
 
@@ -1053,7 +1089,10 @@ static int xdrv_be_on_initwait(struct xdrv_info *drv_info)
 		return ret;
 	LOG0("Have %d conectors", cfg_plat_data->num_connectors);
 	/* create event channels for all streams and publish */
-	return xdrv_evtchnl_create_all(drv_info);
+	ret = xdrv_evtchnl_create_all(drv_info);
+	if (ret < 0)
+		return ret;
+	return xdrv_evtchnl_publish_all(drv_info);
 }
 
 static int xdrv_be_on_connected(struct xdrv_info *drv_info)
