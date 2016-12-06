@@ -31,6 +31,7 @@
 #include <xen/events.h>
 #include <xen/grant_table.h>
 #include <xen/interface/io/ring.h>
+#include <xen/balloon.h>
 
 #include "displif.h"
 
@@ -353,14 +354,19 @@ static void * (*xendrm_alloc)(struct device *dev, size_t size,
 				dma_addr_t *dma_handle, gfp_t gfp,
 				unsigned long attrs);
 
+static struct page *pages[3000];
+
 void* xdrv_alloc(struct device *dev, size_t size,
 	dma_addr_t *dma_handle, gfp_t gfp, unsigned long attrs)
 {
-	unsigned long dma_mask;
+	int num_pages;
+	int ret;
 
-	dma_mask = dma_alloc_coherent_mask(dev, gfp);
-	LOG0("Alloc size %zu mask %lx order %d", size, dma_mask, get_order(size));
+	num_pages = DIV_ROUND_UP(9 * 1024 * 1024, XEN_PAGE_SIZE);
 
+	ret = alloc_xenballooned_pages(num_pages, (struct page **)&pages);
+	LOG0("Alloc size %zu, num pages %d ret %d", size, num_pages, ret);
+	free_xenballooned_pages(num_pages, (struct page **)&pages);
 	return xendrm_alloc(dev, size, dma_handle, gfp, attrs);
 }
 
