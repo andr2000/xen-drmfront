@@ -122,6 +122,13 @@ static void xendrm_handle_vblank(unsigned long data)
 	}
 }
 
+static void xendrm_lastclose(struct drm_device *dev)
+{
+	struct xendrm_du_device *xendrm_du = dev->dev_private;
+
+	xendrm_du->front_funcs->drm_last_close(xendrm_du->xdrv_info);
+}
+
 void xendrm_vtimer_restart_to(struct xendrm_du_device *xendrm_du, int index)
 {
 	atomic_set(&xendrm_du->pflip_to_cnt[index],
@@ -146,6 +153,7 @@ static const struct file_operations xendrm_fops = {
 static struct drm_driver xendrm_driver = {
 	.driver_features           = DRIVER_GEM | DRIVER_MODESET |
 	                             DRIVER_PRIME | DRIVER_ATOMIC,
+	.lastclose                 = xendrm_lastclose,
 	.get_vblank_counter        = drm_vblank_count,
 	.enable_vblank             = xendrm_enable_vblank,
 	.disable_vblank            = xendrm_disable_vblank,
@@ -257,4 +265,23 @@ int xendrm_remove(struct platform_device *pdev)
 	drm_mode_config_cleanup(drm_dev);
 	drm_dev_unref(drm_dev);
 	return 0;
+}
+
+bool xendrm_is_used(struct platform_device *pdev)
+{
+	struct xendrm_du_device *xendrm_du = platform_get_drvdata(pdev);
+	struct drm_device *drm_dev;
+
+	if (!xendrm_du)
+		return false;
+	drm_dev = xendrm_du->ddev;
+	if (!drm_dev)
+		return false;
+
+	/* FIXME: the code below must be protected by drm_global_mutex,
+	 * but it is not accessible to us and anyways there is a
+	 * race condition. If device is already unplugged no new
+	 * users are allowed to the device
+	 */
+	return drm_dev->open_count != 0;
 }

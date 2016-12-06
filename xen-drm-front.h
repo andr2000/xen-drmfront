@@ -38,6 +38,7 @@ struct xendispl_front_funcs {
 	/* CAUTION! this is called with a spin_lock held! */
 	void (*on_page_flip)(struct platform_device *pdev, int conn_idx,
 		uint64_t fb_cookie);
+	void (*drm_last_close)(struct xdrv_info *drv_info);
 };
 
 #endif /* __XEN_DRM_FRONT_H_ */

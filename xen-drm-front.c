@@ -146,6 +146,7 @@ static grant_ref_t xdrv_sh_buf_get_dir_start(
 	struct xdrv_shared_buffer_info *buf);
 static void xdrv_sh_buf_free_by_cookie(struct xdrv_info *drv_info,
 	uint64_t dumb_cookie);
+static void xdrv_drm_unload(struct xdrv_info *drv_info);
 
 static inline struct xendispl_req *ddrv_be_prepare_req(
 	struct xdrv_evtchnl_info *evtchnl, uint8_t operation)
@@ -316,6 +317,7 @@ static struct xendispl_front_funcs xendispl_front_funcs = {
 	.fb_attach = xendispl_front_fb_attach,
 	.fb_detach = xendispl_front_fb_detach,
 	.page_flip = xendispl_front_page_flip,
+	.drm_last_close = xdrv_drm_unload,
 };
 
 /* Unprivileged guests (i.e. ones without hardware) are not permitted to
@@ -1103,8 +1105,29 @@ static int xdrv_be_on_connected(struct xdrv_info *drv_info)
 
 static void xdrv_be_on_disconnected(struct xdrv_info *drv_info)
 {
-	xdrv_remove_internal(drv_info);
+	bool removed = true;
+
+	if (drv_info->ddrv_pdev) {
+		if (xendrm_is_used(drv_info->ddrv_pdev)) {
+			LOG0("DRM driver still in use, deferring removal");
+			removed = false;
+		} else {
+			xdrv_remove_internal(drv_info);
+		}
+	}
 	xdrv_evtchnl_set_state(drv_info, EVTCHNL_STATE_DISCONNECTED);
+	if (removed)
+		xenbus_switch_state(drv_info->xb_dev, XenbusStateInitialising);
+	else
+		xenbus_switch_state(drv_info->xb_dev, XenbusStateReconfiguring);
+}
+
+static void xdrv_drm_unload(struct xdrv_info *drv_info)
+{
+	if (drv_info->xb_dev->state != XenbusStateReconfiguring)
+		return;
+	LOG0("Can try removing driver now");
+	xenbus_switch_state(drv_info->xb_dev, XenbusStateInitialising);
 }
 
 static void xdrv_be_on_changed(struct xenbus_device *xb_dev,
@@ -1113,8 +1136,7 @@ static void xdrv_be_on_changed(struct xenbus_device *xb_dev,
 	struct xdrv_info *drv_info = dev_get_drvdata(&xb_dev->dev);
 	int ret;
 
-	dev_dbg(&xb_dev->dev,
-		"Backend state is %s, front is %s",
+	LOG0("Backend state is %s, front is %s",
 		xenbus_strstate(backend_state),
 		xenbus_strstate(xb_dev->state));
 	switch (backend_state) {
@@ -1126,19 +1148,20 @@ static void xdrv_be_on_changed(struct xenbus_device *xb_dev,
 		break;
 
 	case XenbusStateInitialising:
-		if (xb_dev->state == XenbusStateInitialising)
-			break;
 		/* recovering after backend unexpected closure */
 		mutex_lock(&drv_info->mutex);
 		xdrv_be_on_disconnected(drv_info);
 		mutex_unlock(&drv_info->mutex);
-		xenbus_switch_state(xb_dev, XenbusStateInitialising);
 		break;
 
 	case XenbusStateInitWait:
-		if (xb_dev->state != XenbusStateInitialising)
-			break;
+		/* recovering after backend unexpected closure */
 		mutex_lock(&drv_info->mutex);
+		xdrv_be_on_disconnected(drv_info);
+		if (xb_dev->state != XenbusStateInitialising) {
+			mutex_unlock(&drv_info->mutex);
+			break;
+		}
 		ret = xdrv_be_on_initwait(drv_info);
 		mutex_unlock(&drv_info->mutex);
 		if (ret < 0) {
@@ -1177,7 +1200,6 @@ static void xdrv_be_on_changed(struct xenbus_device *xb_dev,
 		mutex_lock(&drv_info->mutex);
 		xdrv_be_on_disconnected(drv_info);
 		mutex_unlock(&drv_info->mutex);
-		xenbus_switch_state(xb_dev, XenbusStateInitialising);
 		break;
 	}
 }
