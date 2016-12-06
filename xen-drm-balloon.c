@@ -25,39 +25,24 @@
 #include "xen-drm-balloon.h"
 #include "xen-drm-logs.h"
 
-/*
- * Use one extent per PAGE_SIZE to avoid to break down the page into
- * multiple frame.
- */
-#define EXTENT_ORDER (fls(XEN_PFN_PER_PAGE) - 1)
+int xendrm_balloon_init(struct xen_drm_balloon *balloon)
+{
+	mutex_init(&balloon->lock);
+	return 0;
+}
 
-/*
- * balloon_process() state:
- *
- * BP_DONE: done or nothing to do,
- * BP_WAIT: wait to be rescheduled,
- * BP_EAGAIN: error, go to sleep,
- * BP_ECANCELED: error, balloon operation canceled.
- */
-
-enum bp_state {
-	BP_DONE,
-	BP_WAIT,
-	BP_EAGAIN,
-	BP_ECANCELED
-};
-
-static enum bp_state increase_reservation(struct xen_drm_balloon *balloon,
+int xendrm_balloon_increase_reservation(struct xen_drm_balloon *balloon,
 	int nr_pages, struct page **pages)
 {
 	int rc;
 	int i, j, num_pages_in_batch;
 	struct xen_memory_reservation reservation = {
 		.address_bits = 0,
-		.extent_order = EXTENT_ORDER,
+		.extent_order = 0,
 		.domid        = DOMID_SELF
 	};
 
+	mutex_lock(&balloon->lock);
 	j = 0;
 	while (nr_pages) {
 again:
@@ -77,6 +62,7 @@ again:
 		/* rc will hold number of pages processed */
 		rc = HYPERVISOR_memory_op(XENMEM_populate_physmap,
 			&reservation);
+		WARN_ON(rc != num_pages_in_batch);
 		if (rc <= 0) {
 			LOG0("Failed to populate physmap: requested %d done %d, retrying",
 				num_pages_in_batch, rc);
@@ -88,20 +74,22 @@ again:
 		 * as after un-mapping we do need some memory
 		 */
 	}
-	return BP_DONE;
+	mutex_unlock(&balloon->lock);
+	return 0;
 }
 
-static enum bp_state decrease_reservation(struct xen_drm_balloon *balloon,
+int xendrm_balloon_decrease_reservation(struct xen_drm_balloon *balloon,
 	int nr_pages, struct page **pages)
 {
 	int i, j, num_pages_in_batch;
 	int rc;
 	struct xen_memory_reservation reservation = {
 		.address_bits = 0,
-		.extent_order = EXTENT_ORDER,
+		.extent_order = 0,
 		.domid        = DOMID_SELF
 	};
 
+	mutex_lock(&balloon->lock);
 	j = 0;
 	while (nr_pages) {
 		/* will rest of the pages fit in this batch? */
@@ -123,5 +111,6 @@ static enum bp_state decrease_reservation(struct xen_drm_balloon *balloon,
 			&reservation);
 		BUG_ON(rc != nr_pages);
 	}
-	return BP_DONE;
+	mutex_unlock(&balloon->lock);
+	return 0;
 }

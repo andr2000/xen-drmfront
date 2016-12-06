@@ -21,7 +21,14 @@
 #include <xen/interface/memory.h>
 
 struct xen_drm_balloon {
+	struct mutex lock;
 	xen_pfn_t frame_list[PAGE_SIZE / sizeof(xen_pfn_t)];
 };
+
+int xendrm_balloon_init(struct xen_drm_balloon *balloon);
+int xendrm_balloon_increase_reservation(struct xen_drm_balloon *balloon,
+	int nr_pages, struct page **pages);
+int xendrm_balloon_decrease_reservation(struct xen_drm_balloon *balloon,
+	int nr_pages, struct page **pages);
 
 #endif /* __XEN_DRM__BALLOON_H */
