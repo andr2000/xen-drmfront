@@ -349,12 +349,29 @@ static int xdrv_mmap(struct device *dev, struct vm_area_struct *vma,
 	return ret;
 }
 
+static void * (*xendrm_alloc)(struct device *dev, size_t size,
+				dma_addr_t *dma_handle, gfp_t gfp,
+				unsigned long attrs);
+
+void* xdrv_alloc(struct device *dev, size_t size,
+	dma_addr_t *dma_handle, gfp_t gfp, unsigned long attrs)
+{
+	unsigned long dma_mask;
+
+	dma_mask = dma_alloc_coherent_mask(dev, gfp);
+	LOG0("Alloc size %zu mask %lx order %d", size, dma_mask, get_order(size));
+
+	return xendrm_alloc(dev, size, dma_handle, gfp, attrs);
+}
+
 static void xdrv_setup_dma_map_ops(struct xdrv_info *xdrv_info,
 	struct device *dev)
 {
 	if (xdrv_info->dma_map_ops.mmap != xdrv_mmap) {
 		xdrv_info->dma_map_ops = *(get_dma_ops(dev));
 		xdrv_info->dma_map_ops.mmap = xdrv_mmap;
+		xendrm_alloc = xdrv_info->dma_map_ops.alloc;
+		xdrv_info->dma_map_ops.alloc = xdrv_alloc;
 	}
 	dev->archdata.dma_ops = &xdrv_info->dma_map_ops;
 }
