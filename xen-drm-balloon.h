@@ -17,4 +17,11 @@
 #ifndef __XEN_DRM__BALLOON_H
 #define __XEN_DRM__BALLOON_H
 
+#include <linux/kernel.h>
+#include <xen/interface/memory.h>
+
+struct xen_drm_balloon {
+	xen_pfn_t frame_list[PAGE_SIZE / sizeof(xen_pfn_t)];
+};
+
 #endif /* __XEN_DRM__BALLOON_H */

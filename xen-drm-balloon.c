@@ -16,15 +16,19 @@
  * Copyright (C) 2016 EPAM Systems Inc.
  */
 
-#include <linux/kernel.h>
 #include <linux/list.h>
 
 #include <xen/xen.h>
 #include <asm/xen/hypercall.h>
-#include <xen/interface/memory.h>
 #include <xen/page.h>
 
 #include "xen-drm-balloon.h"
+
+/*
+ * Use one extent per PAGE_SIZE to avoid to break down the page into
+ * multiple frame.
+ */
+#define EXTENT_ORDER (fls(XEN_PFN_PER_PAGE) - 1)
 
 /*
  * balloon_process() state:
@@ -42,78 +46,48 @@ enum bp_state {
 	BP_ECANCELED
 };
 
-static enum bp_state increase_reservation(unsigned long nr_pages)
+static enum bp_state increase_reservation(struct xen_drm_balloon *balloon,
+	unsigned long nr_pages, struct page **pages)
 {
 	int rc;
-	unsigned long i;
-	struct page   *page;
+	unsigned long i, j, num_pages_in_batch;
 	struct xen_memory_reservation reservation = {
 		.address_bits = 0,
 		.extent_order = EXTENT_ORDER,
 		.domid        = DOMID_SELF
 	};
 
-	if (nr_pages > ARRAY_SIZE(frame_list))
-		nr_pages = ARRAY_SIZE(frame_list);
-
-	page = list_first_entry_or_null(&ballooned_pages, struct page, lru);
-	for (i = 0; i < nr_pages; i++) {
-		if (!page) {
-			nr_pages = i;
-			break;
+	j = 0;
+	while (nr_pages) {
+		/* will rest of the pages fit in this batch? */
+		num_pages_in_batch = nr_pages;
+		if (num_pages_in_batch > ARRAY_SIZE(balloon->frame_list))
+			num_pages_in_batch = ARRAY_SIZE(balloon->frame_list);
+		for (i = 0; i < num_pages_in_batch; i++) {
+			/* XENMEM_populate_physmap requires a PFN based on Xen
+			 * granularity.
+			 */
+			balloon->frame_list[i] = page_to_xen_pfn(pages[j++]);
 		}
+		nr_pages -= num_pages_in_batch;
+		set_xen_guest_handle(reservation.extent_start,
+			balloon->frame_list);
+		reservation.nr_extents = num_pages_in_batch;
+		/* rc will hold number of pages processed */
+		rc = HYPERVISOR_memory_op(XENMEM_populate_physmap,
+			&reservation);
+		if (rc <= 0)
+			return BP_EAGAIN;
 
-		/* XENMEM_populate_physmap requires a PFN based on Xen
-		 * granularity.
+		/* Do not relinquish pages back to the allocator
+		 * as after un-mapping we do need some memory
 		 */
-		frame_list[i] = page_to_xen_pfn(page);
-		page = balloon_next_page(page);
 	}
-
-	set_xen_guest_handle(reservation.extent_start, frame_list);
-	reservation.nr_extents = nr_pages;
-	rc = HYPERVISOR_memory_op(XENMEM_populate_physmap, &reservation);
-	if (rc <= 0)
-		return BP_EAGAIN;
-
-	for (i = 0; i < rc; i++) {
-		page = balloon_retrieve(false);
-		BUG_ON(page == NULL);
-
-#ifdef CONFIG_XEN_HAVE_PVMMU
-		/*
-		 * We don't support PV MMU when Linux and Xen is using
-		 * different page granularity.
-		 */
-		BUILD_BUG_ON(XEN_PAGE_SIZE != PAGE_SIZE);
-
-		if (!xen_feature(XENFEAT_auto_translated_physmap)) {
-			unsigned long pfn = page_to_pfn(page);
-
-			set_phys_to_machine(pfn, frame_list[i]);
-
-			/* Link back into the page tables if not highmem. */
-			if (!PageHighMem(page)) {
-				int ret;
-				ret = HYPERVISOR_update_va_mapping(
-						(unsigned long)__va(pfn << PAGE_SHIFT),
-						mfn_pte(frame_list[i], PAGE_KERNEL),
-						0);
-				BUG_ON(ret);
-			}
-		}
-#endif
-
-		/* Relinquish the page back to the allocator. */
-		__free_reserved_page(page);
-	}
-
-	balloon_stats.current_pages += rc;
-
 	return BP_DONE;
 }
 
-static enum bp_state decrease_reservation(unsigned long nr_pages, gfp_t gfp)
+static enum bp_state decrease_reservation(struct xen_drm_balloon *balloon,
+	unsigned long nr_pages, struct page **pages)
 {
 	enum bp_state state = BP_DONE;
 	unsigned long i;
