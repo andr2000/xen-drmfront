@@ -58,6 +58,9 @@ int xendrm_du_encoder_create(struct xendrm_du_device *xendrm_du,
 static enum drm_connector_status
 xendrm_du_drm_connector_detect(struct drm_connector *connector, bool force)
 {
+	/* TODO: check if on back disconnect connector_status_disconnected
+	 * will help cleaning up
+	 */
 	return connector_status_connected;
 }
 

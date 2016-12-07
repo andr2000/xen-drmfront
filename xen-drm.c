@@ -251,6 +251,9 @@ int xendrm_probe(struct platform_device *pdev,
 		xendrm_driver.date, ddev->primary->index);
 	return 0;
 fail:
+	/* TODO: remove doesn't check if any part of the driver was created
+	 * this needs to be fixed
+	 */
 	xendrm_remove(pdev);
 	return ret;
 }
