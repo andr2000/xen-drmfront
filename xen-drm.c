@@ -283,8 +283,7 @@ bool xendrm_is_used(struct platform_device *pdev)
 
 	/* FIXME: the code below must be protected by drm_global_mutex,
 	 * but it is not accessible to us and anyways there is a
-	 * race condition. If device is already unplugged no new
-	 * users are allowed to the device
+	 * race condition.
 	 */
 	return drm_dev->open_count != 0;
 }

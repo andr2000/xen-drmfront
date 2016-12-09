@@ -51,6 +51,7 @@ xendrm_du_fb_create(struct drm_device *dev, struct drm_file *file_priv,
 				xendrm_du->xdrv_info, mode_cmd->handles[0],
 				(uint64_t)fb, fb->width, fb->height,
 				fb->pixel_format) < 0) {
+			DRM_ERROR("Back failed to attach FB %p\n", fb);
 			drm_fb_cma_destroy(fb);
 			fb = NULL;
 		}
