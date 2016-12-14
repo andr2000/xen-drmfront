@@ -111,7 +111,7 @@ struct xdrv_info {
 	struct xendrm_plat_data cfg_plat_data;
 
 	/* dumb buffers */
-	struct list_head dumb_buf;
+	struct list_head dumb_buf_list;
 
 	struct dma_map_ops dma_map_ops;
 };
@@ -894,7 +894,7 @@ static void xdrv_sh_buf_free_by_cookie(struct xdrv_info *drv_info,
 	struct xdrv_shared_buffer_info *buf, *q;
 
 	LOG0("start");
-	list_for_each_entry_safe(buf, q, &drv_info->dumb_buf, list) {
+	list_for_each_entry_safe(buf, q, &drv_info->dumb_buf_list, list) {
 		LOG0("element buf->dumb_cookie %llx == dumb_cookie %llx", buf->dumb_cookie, dumb_cookie);
 		if (buf->dumb_cookie == dumb_cookie) {
 			list_del(&buf->list);
@@ -908,7 +908,7 @@ static void xdrv_sh_buf_free_all(struct xdrv_info *drv_info)
 {
 	struct xdrv_shared_buffer_info *buf, *q;
 
-	list_for_each_entry_safe(buf, q, &drv_info->dumb_buf, list) {
+	list_for_each_entry_safe(buf, q, &drv_info->dumb_buf_list, list) {
 		list_del(&buf->list);
 		xdrv_sh_buf_free(buf);
 	}
@@ -1033,7 +1033,7 @@ xdrv_sh_buf_alloc(struct xdrv_info *drv_info, uint64_t dumb_cookie,
 			num_pages_dir, num_pages_vbuffer, num_grefs) < 0)
 		goto fail;
 	xdrv_sh_buf_fill_page_dir(buf, num_pages_dir);
-	list_add(&buf->list, &drv_info->dumb_buf);
+	list_add(&buf->list, &drv_info->dumb_buf_list);
 	return buf;
 fail:
 	xdrv_sh_buf_free(buf);
@@ -1063,7 +1063,7 @@ static int xdrv_probe(struct xenbus_device *xb_dev,
 
 	drv_info->xb_dev = xb_dev;
 	spin_lock_init(&drv_info->io_lock);
-	INIT_LIST_HEAD(&drv_info->dumb_buf);
+	INIT_LIST_HEAD(&drv_info->dumb_buf_list);
 	mutex_init(&drv_info->mutex);
 	drv_info->ddrv_registered = false;
 	dev_set_drvdata(&xb_dev->dev, drv_info);
