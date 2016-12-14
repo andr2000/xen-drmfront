@@ -871,11 +871,15 @@ static void xdrv_sh_buf_free(struct xdrv_shared_buffer_info *buf)
 
 	if (buf->grefs) {
 		{
-			int k;
+			int k, flags;
 
-			for (k = 0; k < 10; k++)
-				DRM_ERROR("++++++++++++ gref %d is 0x%04x\n",
-					k, buf->grefs[k]);
+			for (k = 0; k < 10; k++) {
+				flags = gnttab_query_foreign_access(buf->grefs[k]);
+				DRM_ERROR("++++++++++++ gref %d is 0x%04x %s %s\n",
+					k, buf->grefs[k],
+					flags & GTF_reading ? "GTF_reading" : "",
+					flags & GTF_writing? "GTF_writing" : "");
+			}
 		}
 		for (i = 0; i < buf->num_grefs; i++)
 			if (buf->grefs[i] != GRANT_INVALID_REF)
