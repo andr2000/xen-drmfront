@@ -208,6 +208,7 @@ int xendispl_front_mode_set(struct xendrm_du_crtc *du_crtc, uint32_t x,
 	req->op.set_config.height = height;
 	req->op.set_config.bpp = bpp;
 	req->op.set_config.fb_cookie = fb_cookie;
+	LOG0("+++++++++++++++++++++++++++++++++++++++++++++");
 	return ddrv_be_stream_do_io(evtchnl, req, flags);
 }
 
@@ -223,6 +224,7 @@ int xendispl_front_dbuf_create(struct xdrv_info *drv_info, uint64_t dumb_cookie,
 	evtchnl = &drv_info->evt_pairs[GENERIC_OP_EVT_CHNL].ctrl;
 	if (unlikely(!evtchnl))
 		return -EIO;
+	LOG0("++++++++++++++++++++++++++ Dbuf create handle %llu", dumb_cookie);
 	buf = xdrv_sh_buf_alloc(drv_info, dumb_cookie, vaddr, size);
 	if (!buf)
 		return -ENOMEM;
@@ -253,8 +255,11 @@ int xendispl_front_dbuf_destroy(struct xdrv_info *drv_info,
 	req = ddrv_be_prepare_req(evtchnl, XENDISPL_OP_DBUF_DESTROY);
 
 	req->op.dbuf_destroy.dbuf_cookie = dumb_cookie;
+	LOG0("+++++++++++++++++++++++++++++++++++++++++++++");
 	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
+	LOG0("++++++++++++++++++++++++++ Dbuf destroy handle %llu", dumb_cookie);
 	xdrv_sh_buf_free_by_cookie(drv_info, dumb_cookie);
+	LOG0("+++++++++++++++++++++++++++++++++++++++++++++");
 	return ret;
 }
 
@@ -276,6 +281,7 @@ int xendispl_front_fb_attach(struct xdrv_info *drv_info,
 	req->op.fb_attach.width = width;
 	req->op.fb_attach.height = height;
 	req->op.fb_attach.pixel_format = pixel_format;
+	LOG0("+++++++++++++++++++++++++++++++++++++++++++++");
 	return ddrv_be_stream_do_io(evtchnl, req, flags);
 }
 
@@ -291,6 +297,7 @@ int xendispl_front_fb_detach(struct xdrv_info *drv_info, uint64_t fb_cookie)
 	spin_lock_irqsave(&drv_info->io_lock, flags);
 	req = ddrv_be_prepare_req(evtchnl, XENDISPL_OP_FB_DETACH);
 	req->op.fb_detach.fb_cookie = fb_cookie;
+	LOG0("+++++++++++++++++++++++++++++++++++++++++++++");
 	return ddrv_be_stream_do_io(evtchnl, req, flags);
 }
 
@@ -307,6 +314,7 @@ int xendispl_front_page_flip(struct xdrv_info *drv_info, int conn_idx,
 	spin_lock_irqsave(&drv_info->io_lock, flags);
 	req = ddrv_be_prepare_req(evtchnl, XENDISPL_OP_PG_FLIP);
 	req->op.pg_flip.fb_cookie = fb_cookie;
+	LOG0("+++++++++++++++++++++++++++++++++++++++++++++");
 	return ddrv_be_stream_do_io(evtchnl, req, flags);
 }
 
@@ -858,6 +866,13 @@ static void xdrv_sh_buf_free(struct xdrv_shared_buffer_info *buf)
 	int i;
 
 	if (buf->grefs) {
+		{
+			int k;
+
+			for (k = 0; k < 10; k++)
+				DRM_ERROR("++++++++++++ gref %d is 0x%04x\n",
+					k, buf->grefs[k]);
+		}
 		for (i = 0; i < buf->num_grefs; i++)
 			if (buf->grefs[i] != GRANT_INVALID_REF)
 				gnttab_end_foreign_access(buf->grefs[i],
@@ -919,6 +934,13 @@ void xdrv_sh_buf_fill_page_dir(struct xdrv_shared_buffer_info *buf,
 		sizeof(grant_ref_t);
 	/* skip grefs at start, they are for pages granted for the directory */
 	cur_gref = num_pages_dir;
+	{
+		int k;
+
+		for (k = 0; k < 10; k++)
+			DRM_ERROR("++++++++++++ gref %d is 0x%04x\n",
+				k, buf->grefs[k]);
+	}
 	for (i = 0; i < num_pages_dir; i++) {
 		page_dir = (struct xendispl_page_directory *)ptr;
 		if (grefs_left <= num_grefs_per_page) {
@@ -969,7 +991,6 @@ int xdrv_sh_buf_grant_refs(struct xenbus_device *xb_dev,
 		buf->grefs[j++] = cur_ref;
 	}
 	gnttab_free_grant_references(priv_gref_head);
-	xdrv_sh_buf_fill_page_dir(buf, num_pages_dir);
 	return 0;
 }
 
