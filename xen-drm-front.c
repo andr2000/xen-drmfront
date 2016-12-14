@@ -111,7 +111,7 @@ struct xdrv_info {
 	struct xendrm_plat_data cfg_plat_data;
 
 	/* dumb buffers */
-	struct xdrv_shared_buffer_info *dumb_buf;
+	struct list_head dumb_buf;
 
 	struct dma_map_ops dma_map_ops;
 };
@@ -220,6 +220,7 @@ int xendispl_front_dbuf_create(struct xdrv_info *drv_info, uint64_t dumb_cookie,
 	struct xdrv_shared_buffer_info *buf;
 	struct xendispl_req *req;
 	unsigned long flags;
+	int ret;
 
 	evtchnl = &drv_info->evt_pairs[GENERIC_OP_EVT_CHNL].ctrl;
 	if (unlikely(!evtchnl))
@@ -237,7 +238,10 @@ int xendispl_front_dbuf_create(struct xdrv_info *drv_info, uint64_t dumb_cookie,
 	req->op.dbuf_create.width = width;
 	req->op.dbuf_create.height = height;
 	req->op.dbuf_create.bpp = bpp;
-	return ddrv_be_stream_do_io(evtchnl, req, flags);
+	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
+	if (ret < 0)
+		xdrv_sh_buf_free_by_cookie(drv_info, dumb_cookie);
+	return ret;
 }
 
 int xendispl_front_dbuf_destroy(struct xdrv_info *drv_info,
@@ -887,17 +891,14 @@ static void xdrv_sh_buf_free(struct xdrv_shared_buffer_info *buf)
 static void xdrv_sh_buf_free_by_cookie(struct xdrv_info *drv_info,
 	uint64_t dumb_cookie)
 {
-	struct list_head *pos, *q;
+	struct xdrv_shared_buffer_info *buf, *q;
 
-	list_for_each_safe(pos, q, &drv_info->dumb_buf->list) {
-		struct xdrv_shared_buffer_info *buf;
-
-		buf = list_entry(pos, struct xdrv_shared_buffer_info, list);
+	LOG0("start");
+	list_for_each_entry_safe(buf, q, &drv_info->dumb_buf, list) {
+		LOG0("element buf->dumb_cookie %llx == dumb_cookie %llx", buf->dumb_cookie, dumb_cookie);
 		if (buf->dumb_cookie == dumb_cookie) {
-			list_del(pos);
+			list_del(&buf->list);
 			xdrv_sh_buf_free(buf);
-			if (drv_info->dumb_buf == buf)
-				drv_info->dumb_buf = NULL;
 			break;
 		}
 	}
@@ -905,18 +906,11 @@ static void xdrv_sh_buf_free_by_cookie(struct xdrv_info *drv_info,
 
 static void xdrv_sh_buf_free_all(struct xdrv_info *drv_info)
 {
-	struct list_head *pos, *q;
+	struct xdrv_shared_buffer_info *buf, *q;
 
-	if (!drv_info->dumb_buf)
-		return;
-	list_for_each_safe(pos, q, &drv_info->dumb_buf->list) {
-		struct xdrv_shared_buffer_info *buf;
-
-		buf = list_entry(pos, struct xdrv_shared_buffer_info, list);
-		list_del(pos);
+	list_for_each_entry_safe(buf, q, &drv_info->dumb_buf, list) {
+		list_del(&buf->list);
 		xdrv_sh_buf_free(buf);
-		if (drv_info->dumb_buf == buf)
-			drv_info->dumb_buf = NULL;
 	}
 }
 
@@ -1020,10 +1014,6 @@ xdrv_sh_buf_alloc(struct xdrv_info *drv_info, uint64_t dumb_cookie,
 	buf = kzalloc(sizeof(*buf), GFP_KERNEL);
 	if (!buf)
 		return NULL;
-	if (!drv_info->dumb_buf) {
-		drv_info->dumb_buf = buf;
-		INIT_LIST_HEAD(&buf->list);
-	}
 	buf->vbuffer = vbuffer;
 	buf->dumb_cookie = dumb_cookie;
 	num_pages_vbuffer = DIV_ROUND_UP(buffer_size, XEN_PAGE_SIZE);
@@ -1043,11 +1033,9 @@ xdrv_sh_buf_alloc(struct xdrv_info *drv_info, uint64_t dumb_cookie,
 			num_pages_dir, num_pages_vbuffer, num_grefs) < 0)
 		goto fail;
 	xdrv_sh_buf_fill_page_dir(buf, num_pages_dir);
-	list_add(&(buf->list), &(drv_info->dumb_buf->list));
+	list_add(&buf->list, &drv_info->dumb_buf);
 	return buf;
 fail:
-	if (drv_info->dumb_buf == buf)
-		drv_info->dumb_buf = NULL;
 	xdrv_sh_buf_free(buf);
 	return NULL;
 }
@@ -1075,6 +1063,7 @@ static int xdrv_probe(struct xenbus_device *xb_dev,
 
 	drv_info->xb_dev = xb_dev;
 	spin_lock_init(&drv_info->io_lock);
+	INIT_LIST_HEAD(&drv_info->dumb_buf);
 	mutex_init(&drv_info->mutex);
 	drv_info->ddrv_registered = false;
 	dev_set_drvdata(&xb_dev->dev, drv_info);
