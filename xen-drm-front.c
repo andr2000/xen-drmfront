@@ -969,7 +969,6 @@ int xdrv_sh_buf_grant_refs(struct xenbus_device *xb_dev,
 		buf->grefs[j++] = cur_ref;
 	}
 	gnttab_free_grant_references(priv_gref_head);
-	xdrv_sh_buf_fill_page_dir(buf, num_pages_dir);
 	return 0;
 }
 
