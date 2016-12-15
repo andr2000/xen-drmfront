@@ -881,10 +881,27 @@ static void xdrv_sh_buf_free(struct xdrv_shared_buffer_info *buf)
 					flags & GTF_writing? "GTF_writing" : "");
 			}
 		}
+		/* [0] entry is used for page directory, so skip it and use
+		 * the one which is used for the buffer
+		 */
+		if (unlikely(gnttab_query_foreign_access(buf->grefs[1]))) {
+			int try = 10;
+
+			/* reference is not yet updated by the Xen, we can
+			 * end access but it will make the removal deferred
+			 * sleep a bit
+			 */
+			do {
+				DRM_WARN("Grant refs are not released yet\n");
+				msleep(5);
+				if (!gnttab_query_foreign_access(buf->grefs[1]))
+					break;
+			} while (--try);
+		}
 		for (i = 0; i < buf->num_grefs; i++)
 			if (buf->grefs[i] != GRANT_INVALID_REF)
 				gnttab_end_foreign_access(buf->grefs[i],
-						0, 0UL);
+					0, 0UL);
 		kfree(buf->grefs);
 	}
 	if (buf->vdirectory)
