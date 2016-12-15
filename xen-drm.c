@@ -129,7 +129,7 @@ static void xendrm_handle_vblank(unsigned long data)
 		if (atomic_read(&xendrm_du->vblank_enabled[i])) {
 			struct xendrm_du_crtc *du_crtc = &xendrm_du->crtcs[i];
 
-			drm_crtc_handle_vblank(&du_crtc->crtc);
+			xendrm_du_crtc_on_vblank(du_crtc);
 			/* handle page flip time outs */
 			if (likely(atomic_read(&xendrm_du->pflip_to_cnt_armed[i])))
 				if (unlikely(atomic_dec_and_test(

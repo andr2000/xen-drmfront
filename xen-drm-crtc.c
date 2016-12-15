@@ -288,11 +288,13 @@ static void xendrm_du_crtc_ntfy_page_flip_completed(
 
 	dev = du_crtc->xendrm_du->ddev;
 	if (du_crtc->pg_flip_event) {
+		struct drm_crtc *crtc = &du_crtc->crtc;
+
+		drm_crtc_handle_vblank(crtc);
 		spin_lock(&dev->event_lock);
-		drm_crtc_send_vblank_event(&du_crtc->crtc,
-			du_crtc->pg_flip_event);
-		spin_unlock(&dev->event_lock);
+		drm_crtc_send_vblank_event(crtc, du_crtc->pg_flip_event);
 		du_crtc->pg_flip_event = NULL;
+		spin_unlock(&dev->event_lock);
 	}
 }
 
@@ -324,6 +326,12 @@ void xendrm_du_crtc_on_page_flip_done(struct xendrm_du_crtc *du_crtc,
 	spin_unlock_irqrestore(&du_crtc->pg_flip_lock, flags);
 
 	wake_up(&du_crtc->flip_wait);
+}
+
+void xendrm_du_crtc_on_vblank(struct xendrm_du_crtc *du_crtc)
+{
+	if (!xendrm_du_crtc_page_flip_pending(du_crtc))
+		drm_crtc_handle_vblank(&du_crtc->crtc);
 }
 
 void xendrm_du_crtc_on_page_flip_to(struct xendrm_du_crtc *du_crtc)
