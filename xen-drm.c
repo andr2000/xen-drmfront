@@ -52,8 +52,12 @@ static int xendrm_dumb_create(struct drm_file *file_priv, struct drm_device *dev
 	struct xendrm_du_device *xendrm_du = dev->dev_private;
 	struct drm_gem_object *gem_obj;
 	struct drm_gem_cma_object *cma_obj;
+	struct xendrm_dumb_info *dumb_info;
 	int ret;
 
+	dumb_info = kzalloc(sizeof(*dumb_info), GFP_KERNEL);
+	if (!dumb_info)
+		return -ENOMEM;
 	ret = drm_gem_cma_dumb_create(file_priv, dev, args);
 	if (ret < 0)
 		goto fail;
@@ -73,22 +77,37 @@ static int xendrm_dumb_create(struct drm_file *file_priv, struct drm_device *dev
 			args->height, args->bpp, args->size, cma_obj->vaddr);
 	if (ret < 0)
 		goto fail_destroy;
+	dumb_info->gem_obj = gem_obj;
+	dumb_info->handle = args->handle;
+	list_add(&dumb_info->list, &xendrm_du->dumb_buf_list);
 	return 0;
 
 fail_destroy:
 	drm_gem_dumb_destroy(file_priv, dev, args->handle);
 fail:
+	kfree(dumb_info);
 	DRM_ERROR("Failed to create dumb buffer, ret %d\n", ret);
 	return ret;
 }
 
-static int xendrm_dumb_destroy(struct drm_file *file,
-	struct drm_device *dev, uint32_t handle)
+static void xendrm_gem_free_object(struct drm_gem_object *gem_obj)
 {
-	struct xendrm_du_device *xendrm_du = dev->dev_private;
+	struct xendrm_du_device *xendrm_du = gem_obj->dev->dev_private;
+	struct xendrm_dumb_info *dumb_info, *q;
 
-	xendrm_du->front_funcs->dbuf_destroy(xendrm_du->xdrv_info, handle);
-	return drm_gem_dumb_destroy(file, dev, handle);
+	DRM_ERROR("+++++++++++++++++ Looking for gem_obj %p\n", gem_obj);
+	list_for_each_entry_safe(dumb_info, q, &xendrm_du->dumb_buf_list, list) {
+		if (dumb_info->gem_obj == gem_obj) {
+			list_del(&dumb_info->list);
+			DRM_ERROR("+++++++++++++++++ Freeing handle %d\n",
+				dumb_info->handle);
+			xendrm_du->front_funcs->dbuf_destroy(
+				xendrm_du->xdrv_info, dumb_info->handle);
+			kfree(dumb_info);
+			break;
+		}
+	}
+	drm_gem_cma_free_object(gem_obj);
 }
 
 static void xendrm_on_page_flip(struct platform_device *pdev,
@@ -158,7 +177,7 @@ static struct drm_driver xendrm_driver = {
 	.enable_vblank             = xendrm_enable_vblank,
 	.disable_vblank            = xendrm_disable_vblank,
 	.get_vblank_counter        = drm_vblank_no_hw_counter,
-	.gem_free_object           = drm_gem_cma_free_object,
+	.gem_free_object_unlocked  = xendrm_gem_free_object,
 	.gem_vm_ops                = &drm_gem_cma_vm_ops,
 	.prime_handle_to_fd        = drm_gem_prime_handle_to_fd,
 	.prime_fd_to_handle        = drm_gem_prime_fd_to_handle,
@@ -171,7 +190,7 @@ static struct drm_driver xendrm_driver = {
 	.gem_prime_mmap            = drm_gem_cma_prime_mmap,
 	.dumb_create               = xendrm_dumb_create,
 	.dumb_map_offset           = drm_gem_cma_dumb_map_offset,
-	.dumb_destroy              = xendrm_dumb_destroy,
+	.dumb_destroy              = drm_gem_dumb_destroy,
 	.fops                      = &xendrm_fops,
 	.name                      = "xendrm-du",
 	.desc                      = "Xen PV DRM Display Unit",
@@ -199,6 +218,7 @@ int xendrm_probe(struct platform_device *pdev,
 	if (!xendrm_du)
 		return -ENOMEM;
 
+	INIT_LIST_HEAD(&xendrm_du->dumb_buf_list);
 	xendrm_du->front_funcs = xendrm_front_funcs;
 	xendrm_du->front_funcs->on_page_flip = xendrm_on_page_flip;
 	xendrm_du->xdrv_info = platdata->xdrv_info;

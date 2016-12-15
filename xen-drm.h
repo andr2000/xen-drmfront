@@ -27,6 +27,13 @@
 #define XENDRM_DU_MAX_CRTCS	4
 
 struct xendispl_front_funcs;
+struct drm_gem_object;
+
+struct xendrm_dumb_info {
+	struct list_head list;
+	uint32_t handle;
+	struct drm_gem_object *gem_obj;
+};
 
 struct xendrm_du_device {
 	struct xdrv_info *xdrv_info;
@@ -35,6 +42,9 @@ struct xendrm_du_device {
 	int num_crtcs;
 	struct xendrm_plat_data *platdata;
 	struct xendrm_du_crtc crtcs[XENDRM_DU_MAX_CRTCS];
+
+	/* dumb buffers - used to match gem to handle */
+	struct list_head dumb_buf_list;
 
 	/* vblank and page flip handling */
 	struct xendrm_du_timer vblank_timer;
