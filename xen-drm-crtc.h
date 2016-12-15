@@ -51,6 +51,8 @@ struct xendrm_du_crtc {
 	bool pg_flip_flush_queued;
 	bool pg_flip_be_ntfy_fired;
 	wait_queue_head_t flip_wait;
+
+	uint64_t fb_cookie;
 };
 
 int xendrm_du_crtc_create(struct xendrm_du_device *xendrm_du,

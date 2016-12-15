@@ -258,6 +258,7 @@ static int xendrm_du_crtc_do_page_flip(struct drm_crtc *crtc,
 	 * this event to the user space (atomic_begin/flush called)
 	 * 2. backend is clamsy and sends event later than atomic_flush
 	 */
+	du_crtc->fb_cookie = (uint64_t)fb;
 	du_crtc->pg_flip_event = event;
 	/* atomic_flush will happen */
 	du_crtc->pg_flip_flush_queued = true;
@@ -319,6 +320,8 @@ void xendrm_du_crtc_on_page_flip_done(struct xendrm_du_crtc *du_crtc,
 	unsigned long flags;
 
 	spin_lock_irqsave(&du_crtc->pg_flip_lock, flags);
+	DRM_ERROR("flip %llx event %llx\n", du_crtc->fb_cookie, fb_cookie);
+	WARN_ON(du_crtc->fb_cookie != fb_cookie);
 	if (du_crtc->pg_flip_flush_queued)
 		du_crtc->pg_flip_be_ntfy_fired = true;
 	else
