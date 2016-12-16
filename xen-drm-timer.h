@@ -20,28 +20,18 @@
 #include <linux/time.h>
 #include <linux/interrupt.h>
 
-#ifdef CONFIG_HIGH_RES_TIMERS
-#include <linux/hrtimer.h>
-#endif
-
 struct xendrm_du_timer_callbacks {
 	void (*on_period)(unsigned long data);
 };
 
 struct xendrm_du_timer {
-#ifdef CONFIG_HIGH_RES_TIMERS
-	struct hrtimer timer;
-	ktime_t period;
-#else
 	struct timer_list timer;
 	unsigned long period;
-#endif
 	spinlock_t lock;
 	int to_period;
 	unsigned long clb_private;
 	struct xendrm_du_timer_callbacks *clb;
 	atomic_t running;
-	struct tasklet_struct tasklet;
 };
 
 int xendrm_du_timer_init(struct xendrm_du_timer *timer,
