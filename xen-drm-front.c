@@ -885,8 +885,7 @@ static void xdrv_sh_buf_free(struct xdrv_shared_buffer_info *buf)
 					0, 0UL);
 		kfree(buf->grefs);
 	}
-	if (buf->vdirectory)
-		vfree(buf->vdirectory);
+	kfree(buf->vdirectory);
 	kfree(buf);
 }
 
@@ -966,7 +965,7 @@ int xdrv_sh_buf_grant_refs(struct xenbus_device *xb_dev,
 		if (cur_ref < 0)
 			return cur_ref;
 		gnttab_grant_foreign_access_ref(cur_ref, otherend_id,
-			xen_page_to_gfn(vmalloc_to_page(buf->vdirectory +
+			xen_page_to_gfn(virt_to_page(buf->vdirectory +
 				XEN_PAGE_SIZE * i)), 0);
 		buf->grefs[j++] = cur_ref;
 	}
@@ -990,7 +989,7 @@ int xdrv_sh_buf_alloc_buffers(struct xdrv_shared_buffer_info *buf,
 	buf->grefs = kcalloc(num_grefs, sizeof(*buf->grefs), GFP_KERNEL);
 	if (!buf->grefs)
 		return -ENOMEM;
-	buf->vdirectory = vmalloc(num_pages_dir * XEN_PAGE_SIZE);
+	buf->vdirectory = kcalloc(num_pages_dir, XEN_PAGE_SIZE, GFP_KERNEL);
 	if (!buf->vdirectory)
 		return -ENOMEM;
 	buf->vbuffer_sz = num_pages_vbuffer * XEN_PAGE_SIZE;
