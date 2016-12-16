@@ -950,27 +950,28 @@ static void xdrv_sh_buf_free_all(struct xdrv_info *drv_info)
 	}
 }
 
+#define XENDRM_NUM_GREFS_PER_PAGE ((XEN_PAGE_SIZE - \
+	offsetof(struct xendispl_page_directory, gref)) / \
+	sizeof(grant_ref_t))
+
 void xdrv_sh_buf_fill_page_dir(struct xdrv_shared_buffer_info *buf,
 		int num_pages_dir)
 {
 	struct xendispl_page_directory *page_dir;
 	unsigned char *ptr;
-	int i, cur_gref, grefs_left, num_grefs_per_page, to_copy;
+	int i, cur_gref, grefs_left, to_copy;
 
 	ptr = buf->vdirectory;
 	grefs_left = buf->num_grefs - num_pages_dir;
-	num_grefs_per_page = (XEN_PAGE_SIZE -
-		offsetof(struct xendispl_page_directory, gref)) /
-		sizeof(grant_ref_t);
 	/* skip grefs at start, they are for pages granted for the directory */
 	cur_gref = num_pages_dir;
 	for (i = 0; i < num_pages_dir; i++) {
 		page_dir = (struct xendispl_page_directory *)ptr;
-		if (grefs_left <= num_grefs_per_page) {
+		if (grefs_left <= XENDRM_NUM_GREFS_PER_PAGE) {
 			to_copy = grefs_left;
 			page_dir->gref_dir_next_page = GRANT_INVALID_REF;
 		} else {
-			to_copy = num_grefs_per_page;
+			to_copy = XENDRM_NUM_GREFS_PER_PAGE;
 			page_dir->gref_dir_next_page = buf->grefs[i + 1];
 		}
 		memcpy(&page_dir->gref, &buf->grefs[cur_gref],
@@ -1036,7 +1037,7 @@ xdrv_sh_buf_alloc(struct xdrv_info *drv_info, uint64_t dumb_cookie,
 	void *vbuffer, unsigned int buffer_size)
 {
 	struct xdrv_shared_buffer_info *buf;
-	int num_pages_vbuffer, num_grefs_per_page, num_pages_dir, num_grefs;
+	int num_pages_vbuffer, num_pages_dir, num_grefs;
 
 	if (!vbuffer)
 		return NULL;
@@ -1049,11 +1050,9 @@ xdrv_sh_buf_alloc(struct xdrv_info *drv_info, uint64_t dumb_cookie,
 	/* number of grefs a page can hold with respect to the
 	 * xendispl_page_directory header
 	 */
-	num_grefs_per_page = (XEN_PAGE_SIZE -
-		offsetof(struct xendispl_page_directory, gref)) /
-		sizeof(grant_ref_t);
 	/* number of pages the directory itself consumes */
-	num_pages_dir = DIV_ROUND_UP(num_pages_vbuffer, num_grefs_per_page);
+	num_pages_dir = DIV_ROUND_UP(num_pages_vbuffer,
+		XENDRM_NUM_GREFS_PER_PAGE);
 	num_grefs = num_pages_vbuffer + num_pages_dir;
 
 	if (xdrv_sh_buf_alloc_buffers(buf, num_pages_dir,
