@@ -304,10 +304,13 @@ static void xendrm_du_crtc_wait_page_flip(struct xendrm_du_crtc *du_crtc)
 			!xendrm_du_crtc_page_flip_pending(du_crtc),
 			msecs_to_jiffies(50)))
 		return;
-	DRM_ERROR("page flip timed out\n");
 	/* unblock user-space */
 	spin_lock_irqsave(&du_crtc->pg_flip_lock, flags);
-	xendrm_du_crtc_ntfy_page_flip_completed(du_crtc);
+	if (!du_crtc->pg_flip_flush_queued) {
+		DRM_ERROR("page flip timed out\n");
+		xendrm_du_crtc_ntfy_page_flip_completed(du_crtc);
+	}
+	du_crtc->pg_flip_event = NULL;
 	spin_unlock_irqrestore(&du_crtc->pg_flip_lock, flags);
 }
 

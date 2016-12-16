@@ -990,7 +990,7 @@ int xdrv_sh_buf_grant_refs(struct xenbus_device *xb_dev,
 	int otherend_id;
 
 	ret = gnttab_alloc_grant_references(num_grefs, &priv_gref_head);
-	if (ret)
+	if (ret < 0)
 		return ret;
 	buf->num_grefs = num_grefs;
 	otherend_id = xb_dev->otherend_id;
