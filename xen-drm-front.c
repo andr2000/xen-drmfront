@@ -333,6 +333,11 @@ static struct xendispl_front_funcs xendispl_front_funcs = {
  * to vma->vm_page_prot
  * N.B. this is almost the original dma_common_mmap altered
  */
+//#define _PAGE_CACHE_MASK	(_PAGE_PAT | _PAGE_PCD | _PAGE_PWT)
+
+#define PAGE_SHARED1	__pgprot(_PAGE_PRESENT | _PAGE_RW | _PAGE_USER | \
+				 _PAGE_ACCESSED | _PAGE_NX | _PAGE_PCD)
+
 static int xdrv_mmap(struct device *dev, struct vm_area_struct *vma,
 	void *cpu_addr, dma_addr_t dma_addr, size_t size, unsigned long attrs)
 {
@@ -897,6 +902,8 @@ static void xdrv_sh_buf_sync_to_device_single(struct xdrv_info *drv_info,
 {
 	int i;
 
+	clflush_cache_range(buf->vbuffer, buf->vbuffer_sz);
+
 #if 0
 	dma_addr_t paddr = buf->paddr;
 	for (i = 0; i < buf->num_grefs; i++) {
@@ -905,11 +912,11 @@ static void xdrv_sh_buf_sync_to_device_single(struct xdrv_info *drv_info,
 		paddr += XEN_PAGE_SIZE;
 	}
 #endif
-#if 1
+#if 0
 	for (i = 0; i < buf->vbuffer_sz; i++) {
 		volatile char a;
 
-//		mb();
+		mb();
 		a = buf->vbuffer[i];
 		mb();
 //		buf->vbuffer[i] = a;
@@ -923,6 +930,8 @@ static void xdrv_sh_buf_sync_to_device(struct xdrv_info *drv_info)
 	struct xdrv_shared_buffer_info *buf, *q;
 
 	LOG0("sync_to_device");
+//	wbinvd_on_all_cpus();
+//	return;
 	list_for_each_entry_safe(buf, q, &drv_info->dumb_buf_list, list) {
 		xdrv_sh_buf_sync_to_device_single(drv_info, buf);
 	}
