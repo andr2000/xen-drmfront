@@ -975,7 +975,7 @@ int xdrv_sh_buf_grant_refs(struct xenbus_device *xb_dev,
 		if (cur_ref < 0)
 			return cur_ref;
 		gnttab_grant_foreign_access_ref(cur_ref, otherend_id,
-			xen_page_to_gfn(vmalloc_to_page(buf->vbuffer +
+			xen_page_to_gfn(virt_to_page(buf->vbuffer +
 				XEN_PAGE_SIZE * i)), 0);
 		buf->grefs[j++] = cur_ref;
 	}
