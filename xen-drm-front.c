@@ -1049,8 +1049,9 @@ xdrv_sh_buf_alloc(struct xdrv_info *drv_info, uint64_t dumb_cookie,
 	/* number of grefs a page can hold with respect to the
 	 * xendispl_page_directory header
 	 */
-	num_grefs_per_page = (XEN_PAGE_SIZE - sizeof(
-		struct xendispl_page_directory)) / sizeof(grant_ref_t);
+	num_grefs_per_page = (XEN_PAGE_SIZE -
+		offsetof(struct xendispl_page_directory, gref)) /
+		sizeof(grant_ref_t);
 	/* number of pages the directory itself consumes */
 	num_pages_dir = DIV_ROUND_UP(num_pages_vbuffer, num_grefs_per_page);
 	num_grefs = num_pages_vbuffer + num_pages_dir;
