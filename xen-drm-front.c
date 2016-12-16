@@ -91,6 +91,7 @@ struct xdrv_shared_buffer_info {
 	unsigned char *vdirectory;
 	unsigned char *vbuffer;
 	size_t vbuffer_sz;
+	dma_addr_t paddr;
 };
 
 struct xdrv_evtchnl_pair_info {
@@ -141,12 +142,13 @@ static inline void xdrv_evtchnl_flush(
 		struct xdrv_evtchnl_info *channel);
 static struct xdrv_shared_buffer_info *xdrv_sh_buf_alloc(
 	struct xdrv_info *drv_info, uint64_t dumb_cookie,
-	void *vbuffer, unsigned int buffer_size);
+	void *vbuffer, dma_addr_t paddr, unsigned int buffer_size);
 static grant_ref_t xdrv_sh_buf_get_dir_start(
 	struct xdrv_shared_buffer_info *buf);
 static void xdrv_sh_buf_free_by_cookie(struct xdrv_info *drv_info,
 	uint64_t dumb_cookie);
 static void xdrv_drm_unload(struct xdrv_info *drv_info);
+static void xdrv_sh_buf_sync_to_device(struct xdrv_info *drv_info);
 
 static inline struct xendispl_req *ddrv_be_prepare_req(
 	struct xdrv_evtchnl_info *evtchnl, uint8_t operation)
@@ -213,7 +215,7 @@ int xendispl_front_mode_set(struct xendrm_du_crtc *du_crtc, uint32_t x,
 
 int xendispl_front_dbuf_create(struct xdrv_info *drv_info, uint64_t dumb_cookie,
 	uint32_t width, uint32_t height, uint32_t bpp, uint64_t size,
-	void *vaddr)
+	void *vaddr, dma_addr_t paddr)
 {
 	struct xdrv_evtchnl_info *evtchnl;
 	struct xdrv_shared_buffer_info *buf;
@@ -224,7 +226,7 @@ int xendispl_front_dbuf_create(struct xdrv_info *drv_info, uint64_t dumb_cookie,
 	evtchnl = &drv_info->evt_pairs[GENERIC_OP_EVT_CHNL].ctrl;
 	if (unlikely(!evtchnl))
 		return -EIO;
-	buf = xdrv_sh_buf_alloc(drv_info, dumb_cookie, vaddr, size);
+	buf = xdrv_sh_buf_alloc(drv_info, dumb_cookie, vaddr, paddr, size);
 	if (!buf)
 		return -ENOMEM;
 	spin_lock_irqsave(&drv_info->io_lock, flags);
@@ -311,6 +313,7 @@ int xendispl_front_page_flip(struct xdrv_info *drv_info, int conn_idx,
 	spin_lock_irqsave(&drv_info->io_lock, flags);
 	req = ddrv_be_prepare_req(evtchnl, XENDISPL_OP_PG_FLIP);
 	req->op.pg_flip.fb_cookie = fb_cookie;
+	xdrv_sh_buf_sync_to_device(drv_info);
 	return ddrv_be_stream_do_io(evtchnl, req, flags);
 }
 
@@ -340,7 +343,7 @@ static int xdrv_mmap(struct device *dev, struct vm_area_struct *vma,
 	unsigned long pfn = page_to_pfn(virt_to_page(cpu_addr));
 	unsigned long off = vma->vm_pgoff;
 
-	vma->vm_page_prot = PAGE_SHARED;
+	vma->vm_page_prot = /*__pgprot(cachemode2protval(_PAGE_CACHE_MODE_UC));*/PAGE_SHARED;
 
 	if (dma_mmap_from_coherent(dev, vma, cpu_addr, size, &ret))
 		return ret;
@@ -890,6 +893,42 @@ static void xdrv_sh_buf_free(struct xdrv_shared_buffer_info *buf)
 	kfree(buf);
 }
 
+static void xdrv_sh_buf_sync_to_device_single(struct xdrv_info *drv_info,
+	struct xdrv_shared_buffer_info *buf)
+{
+	int i;
+
+#if 0
+	dma_addr_t paddr = buf->paddr;
+	for (i = 0; i < buf->num_grefs; i++) {
+		dma_sync_single_for_device(&drv_info->ddrv_pdev->dev, paddr,
+			PAGE_SIZE, DMA_TO_DEVICE);
+		paddr += XEN_PAGE_SIZE;
+	}
+#endif
+#if 1
+	for (i = 0; i < buf->vbuffer_sz; i++) {
+		volatile char a;
+
+//		mb();
+		a = buf->vbuffer[i];
+		mb();
+//		buf->vbuffer[i] = a;
+//		mb();
+	}
+#endif
+}
+
+static void xdrv_sh_buf_sync_to_device(struct xdrv_info *drv_info)
+{
+	struct xdrv_shared_buffer_info *buf, *q;
+
+	LOG0("sync_to_device");
+	list_for_each_entry_safe(buf, q, &drv_info->dumb_buf_list, list) {
+		xdrv_sh_buf_sync_to_device_single(drv_info, buf);
+	}
+}
+
 static void xdrv_sh_buf_free_by_cookie(struct xdrv_info *drv_info,
 	uint64_t dumb_cookie)
 {
@@ -999,7 +1038,7 @@ int xdrv_sh_buf_alloc_buffers(struct xdrv_shared_buffer_info *buf,
 
 static struct xdrv_shared_buffer_info *
 xdrv_sh_buf_alloc(struct xdrv_info *drv_info, uint64_t dumb_cookie,
-	void *vbuffer, unsigned int buffer_size)
+	void *vbuffer, dma_addr_t paddr, unsigned int buffer_size)
 {
 	struct xdrv_shared_buffer_info *buf;
 	int num_pages_vbuffer, num_grefs_per_page, num_pages_dir, num_grefs;
@@ -1009,6 +1048,7 @@ xdrv_sh_buf_alloc(struct xdrv_info *drv_info, uint64_t dumb_cookie,
 	buf = kzalloc(sizeof(*buf), GFP_KERNEL);
 	if (!buf)
 		return NULL;
+	buf->paddr = paddr;
 	buf->vbuffer = vbuffer;
 	buf->dumb_cookie = dumb_cookie;
 	num_pages_vbuffer = DIV_ROUND_UP(buffer_size, XEN_PAGE_SIZE);
