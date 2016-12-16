@@ -86,6 +86,7 @@ struct xdrv_evtchnl_info {
 struct xdrv_shared_buffer_info {
 	struct list_head list;
 	uint64_t dumb_cookie;
+	uint64_t fb_cookie;
 	int num_grefs;
 	grant_ref_t *grefs;
 	unsigned char *vdirectory;
@@ -144,8 +145,12 @@ static struct xdrv_shared_buffer_info *xdrv_sh_buf_alloc(
 	void *vbuffer, unsigned int buffer_size);
 static grant_ref_t xdrv_sh_buf_get_dir_start(
 	struct xdrv_shared_buffer_info *buf);
-static void xdrv_sh_buf_free_by_cookie(struct xdrv_info *drv_info,
+static void xdrv_sh_buf_free_by_dumb_cookie(struct xdrv_info *drv_info,
 	uint64_t dumb_cookie);
+static struct xdrv_shared_buffer_info *xdrv_sh_buf_get_by_dumb_cookie(
+	struct xdrv_info *drv_info, uint64_t dumb_cookie);
+static void xdrv_sh_buf_flush_fb(struct xdrv_info *drv_info,
+	uint64_t fb_cookie);
 static void xdrv_drm_unload(struct xdrv_info *drv_info);
 
 static inline struct xendispl_req *ddrv_be_prepare_req(
@@ -238,7 +243,7 @@ int xendispl_front_dbuf_create(struct xdrv_info *drv_info, uint64_t dumb_cookie,
 	req->op.dbuf_create.bpp = bpp;
 	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
 	if (ret < 0)
-		xdrv_sh_buf_free_by_cookie(drv_info, dumb_cookie);
+		xdrv_sh_buf_free_by_dumb_cookie(drv_info, dumb_cookie);
 	return ret;
 }
 
@@ -258,7 +263,7 @@ int xendispl_front_dbuf_destroy(struct xdrv_info *drv_info,
 
 	req->op.dbuf_destroy.dbuf_cookie = dumb_cookie;
 	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
-	xdrv_sh_buf_free_by_cookie(drv_info, dumb_cookie);
+	xdrv_sh_buf_free_by_dumb_cookie(drv_info, dumb_cookie);
 	return ret;
 }
 
@@ -267,12 +272,17 @@ int xendispl_front_fb_attach(struct xdrv_info *drv_info,
 	uint32_t height, uint32_t pixel_format)
 {
 	struct xdrv_evtchnl_info *evtchnl;
+	struct xdrv_shared_buffer_info *buf;
 	struct xendispl_req *req;
 	unsigned long flags;
 
 	evtchnl = &drv_info->evt_pairs[GENERIC_OP_EVT_CHNL].ctrl;
 	if (unlikely(!evtchnl))
 		return -EIO;
+	buf = xdrv_sh_buf_get_by_dumb_cookie(drv_info, dumb_cookie);
+	if (!buf)
+		return -EINVAL;
+	buf->fb_cookie = fb_cookie;
 	spin_lock_irqsave(&drv_info->io_lock, flags);
 	req = ddrv_be_prepare_req(evtchnl, XENDISPL_OP_FB_ATTACH);
 	req->op.fb_attach.dbuf_cookie = dumb_cookie;
@@ -307,6 +317,7 @@ int xendispl_front_page_flip(struct xdrv_info *drv_info, int conn_idx,
 
 	if (unlikely(conn_idx >= drv_info->num_evt_pairs))
 		return -EINVAL;
+	xdrv_sh_buf_flush_fb(drv_info, fb_cookie);
 	evtchnl = &drv_info->evt_pairs[conn_idx].ctrl;
 	spin_lock_irqsave(&drv_info->io_lock, flags);
 	req = ddrv_be_prepare_req(evtchnl, XENDISPL_OP_PG_FLIP);
@@ -857,6 +868,32 @@ static grant_ref_t xdrv_sh_buf_get_dir_start(
 	return buf->grefs[0];
 }
 
+static struct xdrv_shared_buffer_info *xdrv_sh_buf_get_by_dumb_cookie(
+	struct xdrv_info *drv_info, uint64_t dumb_cookie)
+{
+	struct xdrv_shared_buffer_info *buf, *q;
+
+	list_for_each_entry_safe(buf, q, &drv_info->dumb_buf_list, list) {
+		if (buf->dumb_cookie == dumb_cookie)
+			return buf;
+	}
+	return NULL;
+}
+
+static void xdrv_sh_buf_flush_fb(struct xdrv_info *drv_info, uint64_t fb_cookie)
+{
+#ifdef CONFIG_X86
+	struct xdrv_shared_buffer_info *buf, *q;
+
+	list_for_each_entry_safe(buf, q, &drv_info->dumb_buf_list, list) {
+		if (buf->fb_cookie == fb_cookie) {
+			clflush_cache_range(buf->vbuffer, buf->vbuffer_sz);
+			break;
+		}
+	}
+#endif
+}
+
 static void xdrv_sh_buf_free(struct xdrv_shared_buffer_info *buf)
 {
 	int i;
@@ -889,14 +926,12 @@ static void xdrv_sh_buf_free(struct xdrv_shared_buffer_info *buf)
 	kfree(buf);
 }
 
-static void xdrv_sh_buf_free_by_cookie(struct xdrv_info *drv_info,
+static void xdrv_sh_buf_free_by_dumb_cookie(struct xdrv_info *drv_info,
 	uint64_t dumb_cookie)
 {
 	struct xdrv_shared_buffer_info *buf, *q;
 
-	LOG0("start");
 	list_for_each_entry_safe(buf, q, &drv_info->dumb_buf_list, list) {
-		LOG0("element buf->dumb_cookie %llx == dumb_cookie %llx", buf->dumb_cookie, dumb_cookie);
 		if (buf->dumb_cookie == dumb_cookie) {
 			list_del(&buf->list);
 			xdrv_sh_buf_free(buf);
