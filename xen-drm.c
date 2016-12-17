@@ -238,14 +238,14 @@ int xendrm_probe(struct platform_device *pdev,
 
 	ret = drm_vblank_init(ddev, xendrm_du->num_crtcs);
 	if (ret < 0)
-		goto fail;
+		goto fail_vblank;
 	/* DRM/KMS objects */
 	ret = xendrm_du_modeset_init(xendrm_du);
 	if (ret < 0) {
 		if (ret != -EPROBE_DEFER)
 			dev_err(&pdev->dev,
 				"failed to initialize DRM/KMS (%d)\n", ret);
-		goto fail;
+		goto fail_modeset;
 	}
 	/* setup vblank emulation: all CRTCs are set for
 	 * XENDRM_CRTC_VREFRESH_HZ and lots of operations during vblank
@@ -263,18 +263,21 @@ int xendrm_probe(struct platform_device *pdev,
 	 */
 	ret = drm_dev_register(ddev, 0);
 	if (ret)
-		goto fail;
+		goto fail_register;
 
 	DRM_INFO("Initialized %s %d.%d.%d %s on minor %d\n",
 		xendrm_driver.name, xendrm_driver.major,
 		xendrm_driver.minor, xendrm_driver.patchlevel,
 		xendrm_driver.date, ddev->primary->index);
 	return 0;
-fail:
-	/* TODO: remove doesn't check if any part of the driver was created
-	 * this needs to be fixed
-	 */
-	xendrm_remove(pdev);
+
+fail_register:
+	xendrm_du_timer_cleanup(&xendrm_du->vblank_timer);
+	drm_dev_unregister(ddev);
+fail_modeset:
+	drm_mode_config_cleanup(ddev);
+fail_vblank:
+	drm_vblank_cleanup(ddev);
 	return ret;
 }
 
