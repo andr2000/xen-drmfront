@@ -528,7 +528,6 @@ static irqreturn_t xdrv_evtchnl_interrupt_evt(int irq, void *dev_id)
 	page->in_cons = cons;
 	/* ensure ring contents */
 	virt_wmb();
-	notify_remote_via_irq(channel->irq);
 
 out:
 	spin_unlock_irqrestore(&drv_info->io_lock, flags);
