@@ -282,7 +282,8 @@ static void xendrm_du_crtc_ntfy_page_flip_completed(
 	unsigned long flags;
 
 	spin_lock_irqsave(&dev->event_lock, flags);
-	if (du_crtc->pg_flip_event) {
+	if (du_crtc->pg_flip_event &&
+		atomic_read(&du_crtc->pg_flip_pending)) {
 		drm_crtc_send_vblank_event(&du_crtc->crtc,
 			du_crtc->pg_flip_event);
 		du_crtc->pg_flip_event = NULL;
@@ -332,33 +333,17 @@ static int xendrm_crtc_set_config(struct drm_mode_set *set)
 	return drm_atomic_helper_set_config(set);
 }
 
-static void xendrm_du_crtc_enable(struct drm_crtc *crtc)
-{
-	struct xendrm_du_crtc *du_crtc = to_xendrm_crtc(crtc);
-	struct drm_device *dev = crtc->dev;
-	unsigned long flags;
-
-	if (du_crtc->enabled)
-		return;
-	du_crtc->enabled = true;
-	spin_lock_irqsave(&dev->event_lock, flags);
-	du_crtc->pg_flip_event = NULL;
-	spin_unlock_irqrestore(&dev->event_lock, flags);
-	drm_crtc_vblank_on(crtc);
-}
-
 static void xendrm_du_crtc_disable(struct drm_crtc *crtc)
 {
 	struct xendrm_du_crtc *du_crtc = to_xendrm_crtc(crtc);
-	struct drm_device *dev = crtc->dev;
+	struct drm_device *dev = du_crtc->crtc.dev;
 	unsigned long flags;
 
-	if (!du_crtc->enabled)
-		return;
-	du_crtc->enabled = false;
 	drm_crtc_vblank_off(crtc);
 	spin_lock_irqsave(&dev->event_lock, flags);
+	xendrm_vtimer_cancel_to(du_crtc->xendrm_du, du_crtc->index);
 	du_crtc->pg_flip_event = NULL;
+	atomic_set(&du_crtc->pg_flip_pending, 0);
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 }
 
@@ -393,7 +378,7 @@ static void xendrm_du_crtc_atomic_flush(struct drm_crtc *crtc,
 
 static const struct drm_crtc_helper_funcs xendrm_du_drm_crtc_helper_funcs = {
 	.atomic_flush = xendrm_du_crtc_atomic_flush,
-	.enable = xendrm_du_crtc_enable,
+	.enable = drm_crtc_vblank_on,
 	.disable = xendrm_du_crtc_disable,
 };
 

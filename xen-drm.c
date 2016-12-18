@@ -155,6 +155,11 @@ void xendrm_vtimer_restart_to(struct xendrm_du_device *xendrm_du, int index)
 	atomic_set(&xendrm_du->pflip_to_cnt_armed[index], 1);
 }
 
+void xendrm_vtimer_cancel_to(struct xendrm_du_device *xendrm_du, int index)
+{
+	atomic_set(&xendrm_du->pflip_to_cnt_armed[index], 0);
+}
+
 static const struct file_operations xendrm_fops = {
 	.owner          = THIS_MODULE,
 	.open           = drm_open,
