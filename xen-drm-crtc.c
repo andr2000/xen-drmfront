@@ -295,7 +295,8 @@ static void xendrm_du_crtc_ntfy_page_flip_completed(
 void xendrm_du_crtc_on_page_flip_done(struct xendrm_du_crtc *du_crtc,
 	uint64_t fb_cookie)
 {
-	WARN_ON(atomic_read(&du_crtc->pg_flip_senders) == 0);
+	WARN_ON(atomic_read(&du_crtc->pg_flip_pending) &&
+		(atomic_read(&du_crtc->pg_flip_senders) == 0));
 	if (atomic_dec_and_test(&du_crtc->pg_flip_senders))
 		xendrm_du_crtc_ntfy_page_flip_completed(du_crtc);
 }
@@ -362,7 +363,8 @@ static void xendrm_du_crtc_atomic_flush(struct drm_crtc *crtc,
 		du_crtc->pg_flip_event = event;
 		spin_unlock_irqrestore(&dev->event_lock, flags);
 		if (likely(event->event.base.type == DRM_EVENT_FLIP_COMPLETE)) {
-			WARN_ON(atomic_read(&du_crtc->pg_flip_senders) == 0);
+			WARN_ON(atomic_read(&du_crtc->pg_flip_pending) &&
+				(atomic_read(&du_crtc->pg_flip_senders) == 0));
 			if (atomic_dec_and_test(&du_crtc->pg_flip_senders))
 				xendrm_du_crtc_ntfy_page_flip_completed(du_crtc);
 		} else {
