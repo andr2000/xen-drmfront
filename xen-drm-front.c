@@ -68,14 +68,16 @@ struct xdrv_evtchnl_info {
 	/* state of the event channel */
 	enum xdrv_evtchnl_state state;
 	enum xdrv_evtchnl_type type;
+	/* either response id or incoming event id */
+	uint16_t evt_id;
+	/* next request id or next expected event id */
+	uint16_t evt_next_id;
 	union {
 		struct {
 			struct xen_displif_front_ring ring;
 			struct completion completion;
-			/* latest response status and id */
+			/* latest response status */
 			int resp_status;
-			uint16_t resp_id;
-			uint16_t req_next_id;
 		} ctrl;
 		struct {
 			struct xendispl_event_page *page;
@@ -161,8 +163,8 @@ static inline struct xendispl_req *ddrv_be_prepare_req(
 	req = RING_GET_REQUEST(&evtchnl->u.ctrl.ring,
 		evtchnl->u.ctrl.ring.req_prod_pvt);
 	req->operation = operation;
-	req->id = evtchnl->u.ctrl.req_next_id++;
-	evtchnl->u.ctrl.resp_id = req->id;
+	req->id = evtchnl->evt_next_id++;
+	evtchnl->evt_id = req->id;
 	return req;
 }
 
@@ -457,7 +459,7 @@ static irqreturn_t xdrv_evtchnl_interrupt_ctrl(int irq, void *dev_id)
 
 	for (i = channel->u.ctrl.ring.rsp_cons; i != rp; i++) {
 		resp = RING_GET_RESPONSE(&channel->u.ctrl.ring, i);
-		if (resp->id != channel->u.ctrl.resp_id)
+		if (unlikely(resp->id != channel->evt_id))
 			continue;
 		switch (resp->operation) {
 		case XENDISPL_OP_PG_FLIP:
@@ -515,6 +517,8 @@ static irqreturn_t xdrv_evtchnl_interrupt_evt(int irq, void *dev_id)
 		struct xendispl_evt *event;
 
 		event = &XENDISPL_IN_RING_REF(page, cons);
+		if (unlikely(event->id != channel->evt_id++))
+			continue;
 		switch (event->type) {
 		case XENDISPL_EVT_PG_FLIP:
 			if (likely(xendispl_front_funcs.on_page_flip)) {
@@ -553,18 +557,16 @@ static void xdrv_evtchnl_free(struct xdrv_info *drv_info,
 	}
 	if (channel->irq)
 		unbind_from_irqhandler(channel->irq, channel);
-	channel->irq = 0;
 	if (channel->port)
 		xenbus_free_evtchn(drv_info->xb_dev, channel->port);
-	channel->port = 0;
 	/* End access and free the pages */
 	if (channel->gref != GRANT_INVALID_REF)
 		gnttab_end_foreign_access(channel->gref, 0, page);
-	channel->gref = GRANT_INVALID_REF;
 	if (channel->type == EVTCHNL_TYPE_CTRL)
 		channel->u.ctrl.ring.sring = NULL;
 	else
 		channel->u.evt.page = NULL;
+	memset(channel, 0, sizeof(*channel));
 }
 
 static void xdrv_evtchnl_free_all(struct xdrv_info *drv_info)
@@ -593,14 +595,12 @@ static int xdrv_evtchnl_alloc(struct xdrv_info *drv_info, int index,
 	irq_handler_t handler;
 	int ret;
 
+	memset(evt_channel, 0, sizeof(*evt_channel));
 	evt_channel->type = type;
 	evt_channel->index = index;
 	evt_channel->drv_info = drv_info;
 	evt_channel->state = EVTCHNL_STATE_DISCONNECTED;
 	evt_channel->gref = GRANT_INVALID_REF;
-	evt_channel->port = 0;
-	evt_channel->irq = 0;
-	memset(&evt_channel->u, 0, sizeof(evt_channel->u));
 	page = get_zeroed_page(GFP_NOIO | __GFP_HIGH);
 	if (!page) {
 		ret = -ENOMEM;

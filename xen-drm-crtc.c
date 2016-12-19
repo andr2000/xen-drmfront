@@ -399,6 +399,7 @@ int xendrm_du_crtc_create(struct xendrm_du_device *xendrm_du,
 	struct drm_plane *primary;
 	int ret;
 
+	memset(du_crtc, 0, sizeof(*du_crtc));
 	du_crtc->xendrm_du = xendrm_du;
 	du_crtc->index = index;
 	ret = xendrm_du_crtc_props_init(xendrm_du, du_crtc);
