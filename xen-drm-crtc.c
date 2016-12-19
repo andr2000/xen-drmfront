@@ -299,6 +299,7 @@ void xendrm_du_crtc_on_page_flip_done(struct xendrm_du_crtc *du_crtc,
 		(atomic_read(&du_crtc->pg_flip_senders) == 0));
 	if (atomic_dec_and_test(&du_crtc->pg_flip_senders))
 		xendrm_du_crtc_ntfy_page_flip_completed(du_crtc);
+	wake_up(&du_crtc->flip_wait);
 }
 
 void xendrm_du_crtc_on_page_flip_to(struct xendrm_du_crtc *du_crtc)
@@ -337,15 +338,14 @@ static int xendrm_crtc_set_config(struct drm_mode_set *set)
 static void xendrm_du_crtc_disable(struct drm_crtc *crtc)
 {
 	struct xendrm_du_crtc *du_crtc = to_xendrm_crtc(crtc);
-	struct drm_device *dev = du_crtc->crtc.dev;
-	unsigned long flags;
 
-	drm_crtc_vblank_off(crtc);
-	spin_lock_irqsave(&dev->event_lock, flags);
 	xendrm_vtimer_cancel_to(du_crtc->xendrm_du, du_crtc->index);
-	du_crtc->pg_flip_event = NULL;
-	atomic_set(&du_crtc->pg_flip_pending, 0);
-	spin_unlock_irqrestore(&dev->event_lock, flags);
+	if (wait_event_timeout(du_crtc->flip_wait,
+			!xendrm_du_crtc_page_flip_pending(du_crtc),
+			msecs_to_jiffies(XENDRM_CRTC_PFLIP_TO_MS)) == 0) {
+		xendrm_du_crtc_ntfy_page_flip_completed(du_crtc);
+	}
+	drm_crtc_vblank_off(crtc);
 }
 
 static void xendrm_du_crtc_atomic_flush(struct drm_crtc *crtc,
@@ -402,6 +402,7 @@ int xendrm_du_crtc_create(struct xendrm_du_device *xendrm_du,
 	memset(du_crtc, 0, sizeof(*du_crtc));
 	du_crtc->xendrm_du = xendrm_du;
 	du_crtc->index = index;
+	init_waitqueue_head(&du_crtc->flip_wait);
 	ret = xendrm_du_crtc_props_init(xendrm_du, du_crtc);
 	if (ret < 0)
 		return ret;
