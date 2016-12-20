@@ -23,6 +23,12 @@
 #include "xen-drm-kms.h"
 #include "xen-drm-logs.h"
 
+struct xendrm_dumb_info {
+	struct list_head list;
+	uint32_t handle;
+	struct drm_gem_object *gem_obj;
+};
+
 int xendrm_enable_vblank(struct drm_device *dev, unsigned int pipe)
 {
 	struct xendrm_du_device *xendrm_du = dev->dev_private;

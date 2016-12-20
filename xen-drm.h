@@ -27,13 +27,6 @@
 #define XENDRM_DU_MAX_CRTCS	4
 
 struct xendispl_front_funcs;
-struct drm_gem_object;
-
-struct xendrm_dumb_info {
-	struct list_head list;
-	uint32_t handle;
-	struct drm_gem_object *gem_obj;
-};
 
 struct xendrm_du_device {
 	struct xdrv_info *xdrv_info;
