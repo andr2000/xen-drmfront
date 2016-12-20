@@ -48,8 +48,9 @@ struct xendrm_du_crtc {
 	atomic_t pg_flip_pending;
 	atomic_t pg_flip_senders;
 	struct drm_pending_vblank_event *pg_flip_event;
-	struct drm_pending_vblank_event *vblank_event;
 	wait_queue_head_t flip_wait;
+	/* current fb cookie */
+	uint64_t fb_cookie;
 };
 
 int xendrm_du_crtc_create(struct xendrm_du_device *xendrm_du,
@@ -59,8 +60,8 @@ int xendrm_du_encoder_create(struct xendrm_du_device *xendrm_du,
 int xendrm_du_connector_create(struct xendrm_du_device *xendrm_du,
 	struct xendrm_du_crtc *du_crtc, struct xendrm_cfg_connector *cfg);
 
-void xendrm_du_crtc_on_page_flip_done(struct xendrm_du_crtc *du_crtc, uint64_t fb_cookie);
+void xendrm_du_crtc_on_page_flip_done(struct xendrm_du_crtc *du_crtc,
+	uint64_t fb_cookie);
 void xendrm_du_crtc_on_page_flip_to(struct xendrm_du_crtc *du_crtc);
-void xendrm_du_crtc_handle_vblank(struct xendrm_du_crtc *du_crtc);
 
 #endif /* __XEN_DRM_CRTC_H_ */

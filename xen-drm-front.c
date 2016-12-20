@@ -202,9 +202,7 @@ int xendispl_front_mode_set(struct xendrm_du_crtc *du_crtc, uint32_t x,
 	struct xdrv_info *drv_info;
 	struct xendispl_req *req;
 	unsigned long flags;
-	int ret;
 
-LOG0("++++++++++++++++++++++++++++++ in");
 	drv_info = du_crtc->xendrm_du->xdrv_info;
 	evtchnl = &drv_info->evt_pairs[du_crtc->index].ctrl;
 	if (unlikely(!evtchnl))
@@ -217,10 +215,7 @@ LOG0("++++++++++++++++++++++++++++++ in");
 	req->op.set_config.height = height;
 	req->op.set_config.bpp = bpp;
 	req->op.set_config.fb_cookie = fb_cookie;
-	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
-
-LOG0("++++++++++++++++++++++++++++++ out");
-	return ret;
+	return ddrv_be_stream_do_io(evtchnl, req, flags);
 }
 
 int xendispl_front_dbuf_create(struct xdrv_info *drv_info, uint64_t dumb_cookie,
@@ -262,7 +257,6 @@ int xendispl_front_dbuf_destroy(struct xdrv_info *drv_info,
 	unsigned long flags;
 	int ret;
 
-LOG0("++++++++++++++++++++++++++++++ in");
 	evtchnl = &drv_info->evt_pairs[GENERIC_OP_EVT_CHNL].ctrl;
 	if (unlikely(!evtchnl))
 		return -EIO;
@@ -272,7 +266,6 @@ LOG0("++++++++++++++++++++++++++++++ in");
 	req->op.dbuf_destroy.dbuf_cookie = dumb_cookie;
 	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
 	xdrv_sh_buf_free_by_dumb_cookie(drv_info, dumb_cookie);
-LOG0("++++++++++++++++++++++++++++++ out");
 	return ret;
 }
 
@@ -307,18 +300,14 @@ int xendispl_front_fb_detach(struct xdrv_info *drv_info, uint64_t fb_cookie)
 	struct xdrv_evtchnl_info *evtchnl;
 	struct xendispl_req *req;
 	unsigned long flags;
-	int ret;
 
-LOG0("++++++++++++++++++++++++++++++ in");
 	evtchnl = &drv_info->evt_pairs[GENERIC_OP_EVT_CHNL].ctrl;
 	if (unlikely(!evtchnl))
 		return -EIO;
 	spin_lock_irqsave(&drv_info->io_lock, flags);
 	req = ddrv_be_prepare_req(evtchnl, XENDISPL_OP_FB_DETACH);
 	req->op.fb_detach.fb_cookie = fb_cookie;
-	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
-LOG0("++++++++++++++++++++++++++++++ out");
-	return ret;
+	return ddrv_be_stream_do_io(evtchnl, req, flags);
 }
 
 int xendispl_front_page_flip(struct xdrv_info *drv_info, int conn_idx,
