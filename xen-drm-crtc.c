@@ -33,6 +33,17 @@ enum page_flip_event_senders {
 	PF_EVT_SENDER_MAX,
 };
 
+static void xendrm_print(struct drm_crtc *crtc, const char *fn,
+	const char *txt)
+{
+	struct drm_device *dev = crtc->dev;
+	struct drm_vblank_crtc *vblank;
+
+	vblank = &dev->vblank[drm_crtc_index(crtc)];
+	DRM_ERROR("++++++++++++++++++++++++ %s %s refcount %d enabled %d\n",
+		fn, txt, atomic_read(&vblank->refcount), vblank->enabled);
+}
+
 static inline struct xendrm_du_connector *
 to_xendrm_connector(struct drm_connector *connector)
 {
@@ -252,6 +263,7 @@ static int xendrm_du_crtc_do_page_flip(struct drm_crtc *crtc,
 		DRM_ERROR("already have pending page flip\n");
 		return -EBUSY;
 	}
+	DRM_ERROR("++++++++++++++++++++++++++ xendrm_du_crtc_do_page_flip fb %p\n", fb);
 	atomic_set(&du_crtc->pg_flip_pending, 1);
 	/* FIXME: drm_pending_vblank_event is not yet fully initialized
 	 * by the DRM core, so it cannot be used to send events now
@@ -287,13 +299,20 @@ static void xendrm_du_crtc_ntfy_page_flip_completed(
 		spin_unlock_irqrestore(&dev->event_lock, flags);
 		return;
 	}
+	if (du_crtc->pg_flip_event->event.base.type == DRM_EVENT_FLIP_COMPLETE)
+		DRM_ERROR("+++++++++++++++++++++++ DRM_EVENT_FLIP_COMPLETE\n");
+	else if (du_crtc->pg_flip_event->event.base.type == DRM_EVENT_VBLANK)
+		DRM_ERROR("+++++++++++++++++++++++ DRM_EVENT_VBLANK\n");
+	else
+		DRM_ERROR("+++++++++++++++++++++++ DRM_EVENT_???????\n");
 	drm_crtc_send_vblank_event(&du_crtc->crtc, du_crtc->pg_flip_event);
 	du_crtc->pg_flip_event = NULL;
 	atomic_set(&du_crtc->pg_flip_pending, 0);
 	wake_up(&du_crtc->flip_wait);
 	spin_unlock_irqrestore(&dev->event_lock, flags);
-//	drm_crtc_vblank_put(&du_crtc->crtc);
-	DRM_ERROR("++++++++++++++++++++++++++ xendrm_du_crtc_ntfy_page_flip_completed ref %d\n", --du_crtc->ref);
+	xendrm_print(&du_crtc->crtc, __FUNCTION__, "drm_crtc_vblank_put in");
+	drm_crtc_vblank_put(&du_crtc->crtc);
+	xendrm_print(&du_crtc->crtc, __FUNCTION__, "drm_crtc_vblank_put out");
 }
 
 void xendrm_du_crtc_handle_vblank(struct xendrm_du_crtc *du_crtc)
@@ -309,15 +328,24 @@ void xendrm_du_crtc_handle_vblank(struct xendrm_du_crtc *du_crtc)
 		spin_unlock_irqrestore(&dev->event_lock, flags);
 		return;
 	}
-	drm_crtc_send_vblank_event(&du_crtc->crtc, du_crtc->pg_flip_event);
-	du_crtc->pg_flip_event = NULL;
+	if (du_crtc->pg_flip_event->event.base.type == DRM_EVENT_FLIP_COMPLETE)
+		DRM_ERROR("+++++++++++++++++++++++ DRM_EVENT_FLIP_COMPLETE\n");
+	else if (du_crtc->pg_flip_event->event.base.type == DRM_EVENT_VBLANK)
+		DRM_ERROR("+++++++++++++++++++++++ DRM_EVENT_VBLANK\n");
+	else
+		DRM_ERROR("+++++++++++++++++++++++ DRM_EVENT_???????\n");
+//	drm_crtc_send_vblank_event(&du_crtc->crtc, du_crtc->pg_flip_event);
+//	du_crtc->pg_flip_event = NULL;
 	spin_unlock_irqrestore(&dev->event_lock, flags);
-	DRM_ERROR("++++++++++++++++++++++++++ xendrm_du_crtc_handle_vblank ref %d\n", --du_crtc->ref);
+//	xendrm_print(&du_crtc->crtc, __FUNCTION__, "drm_crtc_vblank_put in");
+//	drm_crtc_vblank_put(&du_crtc->crtc);
+//	xendrm_print(&du_crtc->crtc, __FUNCTION__, "drm_crtc_vblank_put out");
 }
 
 void xendrm_du_crtc_on_page_flip_done(struct xendrm_du_crtc *du_crtc,
 	uint64_t fb_cookie)
 {
+	DRM_ERROR("++++++++++++++++++++++++++ xendrm_du_crtc_on_page_flip_done fb %llx\n", fb_cookie);
 	WARN_ON(atomic_read(&du_crtc->pg_flip_pending) &&
 		(atomic_read(&du_crtc->pg_flip_senders) == 0));
 	if (atomic_dec_and_test(&du_crtc->pg_flip_senders))
@@ -341,6 +369,7 @@ static int xendrm_crtc_set_config(struct drm_mode_set *set)
 	int ret;
 
 	if (set->mode) {
+		DRM_ERROR("++++++++++++++++++++++++++ xendrm_crtc_set_config fb %p\n", set->fb);
 		ret = xendrm_du->front_funcs->mode_set(du_crtc, set->x, set->y,
 			set->fb->width, set->fb->height,
 			set->fb->bits_per_pixel, (uint64_t)set->fb);
@@ -354,7 +383,12 @@ static int xendrm_crtc_set_config(struct drm_mode_set *set)
 		if (ret < 0)
 			DRM_ERROR("Failed to set mode to back, ret %d\n", ret);
 	}
-	return drm_atomic_helper_set_config(set);
+	xendrm_print(crtc, __FUNCTION__, "drm_atomic_helper_set_config in");
+	ret = drm_atomic_helper_set_config(set);
+	xendrm_print(crtc, __FUNCTION__, "drm_atomic_helper_set_config out");
+//	drm_crtc_vblank_put(crtc);
+//	xendrm_print(crtc, __FUNCTION__, "drm_crtc_vblank_put out");
+	return ret;
 }
 
 static void xendrm_du_crtc_disable(struct drm_crtc *crtc)
@@ -367,10 +401,9 @@ static void xendrm_du_crtc_disable(struct drm_crtc *crtc)
 			msecs_to_jiffies(XENDRM_CRTC_PFLIP_TO_MS)) == 0) {
 		xendrm_du_crtc_ntfy_page_flip_completed(du_crtc);
 	}
-	DRM_ERROR("++++++++++++++++++++++++++ xendrm_du_crtc_disable\n");
+	xendrm_print(&du_crtc->crtc, __FUNCTION__, "drm_crtc_vblank_off in");
 	drm_crtc_vblank_off(crtc);
-	DRM_ERROR("++++++++++++++++++++++++++ xendrm_du_crtc_disable ref %d\n", du_crtc->ref);
-//	drm_crtc_vblank_put(&du_crtc->crtc);
+	xendrm_print(&du_crtc->crtc, __FUNCTION__, "drm_crtc_vblank_off out");
 }
 
 static void xendrm_du_crtc_atomic_flush(struct drm_crtc *crtc,
@@ -383,12 +416,19 @@ static void xendrm_du_crtc_atomic_flush(struct drm_crtc *crtc,
 
 	spin_lock_irqsave(&dev->event_lock, flags);
 	event = crtc->state->event;
+	crtc->state->event = NULL;
 	if (event) {
-		DRM_ERROR("++++++++++++++++++++++++++ xendrm_du_crtc_atomic_flush ref %d\n", ++du_crtc->ref);
-		WARN_ON(drm_crtc_vblank_get(crtc) != 0);
-		crtc->state->event = NULL;
-		du_crtc->pg_flip_event = event;
+		if (event->event.base.type == DRM_EVENT_FLIP_COMPLETE)
+			DRM_ERROR("+++++++++++++++++++++++ DRM_EVENT_FLIP_COMPLETE\n");
+		else if (event->event.base.type == DRM_EVENT_VBLANK)
+			DRM_ERROR("+++++++++++++++++++++++ DRM_EVENT_VBLANK\n");
+		else
+			DRM_ERROR("+++++++++++++++++++++++ DRM_EVENT_???????\n");
 		if (event->event.base.type == DRM_EVENT_FLIP_COMPLETE) {
+			xendrm_print(&du_crtc->crtc, __FUNCTION__, "drm_crtc_vblank_get in");
+			WARN_ON(drm_crtc_vblank_get(crtc) != 0);
+			xendrm_print(&du_crtc->crtc, __FUNCTION__, "drm_crtc_vblank_get out");
+			du_crtc->pg_flip_event = event;
 			WARN_ON(atomic_read(&du_crtc->pg_flip_pending) &&
 				(atomic_read(&du_crtc->pg_flip_senders) == 0));
 			if (atomic_dec_and_test(&du_crtc->pg_flip_senders)) {
@@ -396,14 +436,29 @@ static void xendrm_du_crtc_atomic_flush(struct drm_crtc *crtc,
 				xendrm_du_crtc_ntfy_page_flip_completed(du_crtc);
 				return;
 			}
+		} else {
+			if (drm_crtc_vblank_get(crtc) == 0) {
+				DRM_ERROR("+++++++++++++++++++++++ drm_crtc_arm_vblank_event\n");
+				drm_crtc_arm_vblank_event(crtc, event);
+			} else {
+				DRM_ERROR("+++++++++++++++++++++++ drm_crtc_send_vblank_event\n");
+				drm_crtc_send_vblank_event(crtc, event);
+			}
 		}
 	}
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 }
 
+void xendrm_du_crtc_enable(struct drm_crtc *crtc)
+{
+	xendrm_print(crtc, __FUNCTION__, "drm_crtc_vblank_on in");
+	drm_crtc_vblank_on(crtc);
+	xendrm_print(crtc, __FUNCTION__, "drm_crtc_vblank_on out");
+}
+
 static const struct drm_crtc_helper_funcs xendrm_du_drm_crtc_helper_funcs = {
 	.atomic_flush = xendrm_du_crtc_atomic_flush,
-	.enable = drm_crtc_vblank_on,
+	.enable = xendrm_du_crtc_enable,
 	.disable = xendrm_du_crtc_disable,
 };
 

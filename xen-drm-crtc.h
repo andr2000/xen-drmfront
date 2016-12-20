@@ -49,8 +49,6 @@ struct xendrm_du_crtc {
 	atomic_t pg_flip_senders;
 	struct drm_pending_vblank_event *pg_flip_event;
 	wait_queue_head_t flip_wait;
-
-	int ref;
 };
 
 int xendrm_du_crtc_create(struct xendrm_du_device *xendrm_du,
