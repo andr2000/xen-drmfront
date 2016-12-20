@@ -23,6 +23,7 @@
 #include <linux/platform_device.h>
 #include <linux/irq.h>
 #include <linux/vmalloc.h>
+#include <linux/scatterlist.h>
 
 #include <asm/xen/hypervisor.h>
 #include <xen/xen.h>
@@ -92,7 +93,7 @@ struct xdrv_shared_buffer_info {
 	int num_grefs;
 	grant_ref_t *grefs;
 	unsigned char *vdirectory;
-	unsigned char *vbuffer;
+	struct sg_table *sgt;
 	size_t vbuffer_sz;
 };
 
@@ -144,7 +145,7 @@ static inline void xdrv_evtchnl_flush(
 		struct xdrv_evtchnl_info *channel);
 static struct xdrv_shared_buffer_info *xdrv_sh_buf_alloc(
 	struct xdrv_info *drv_info, uint64_t dumb_cookie,
-	void *vbuffer, unsigned int buffer_size);
+	struct sg_table *sgt, unsigned int buffer_size);
 static grant_ref_t xdrv_sh_buf_get_dir_start(
 	struct xdrv_shared_buffer_info *buf);
 static void xdrv_sh_buf_free_by_dumb_cookie(struct xdrv_info *drv_info,
@@ -220,7 +221,7 @@ int xendispl_front_mode_set(struct xendrm_du_crtc *du_crtc, uint32_t x,
 
 int xendispl_front_dbuf_create(struct xdrv_info *drv_info, uint64_t dumb_cookie,
 	uint32_t width, uint32_t height, uint32_t bpp, uint64_t size,
-	void *vaddr)
+	struct sg_table *sgt)
 {
 	struct xdrv_evtchnl_info *evtchnl;
 	struct xdrv_shared_buffer_info *buf;
@@ -231,7 +232,7 @@ int xendispl_front_dbuf_create(struct xdrv_info *drv_info, uint64_t dumb_cookie,
 	evtchnl = &drv_info->evt_pairs[GENERIC_OP_EVT_CHNL].ctrl;
 	if (unlikely(!evtchnl))
 		return -EIO;
-	buf = xdrv_sh_buf_alloc(drv_info, dumb_cookie, vaddr, size);
+	buf = xdrv_sh_buf_alloc(drv_info, dumb_cookie, sgt, size);
 	if (!buf)
 		return -ENOMEM;
 	spin_lock_irqsave(&drv_info->io_lock, flags);
@@ -886,7 +887,11 @@ static void xdrv_sh_buf_flush_fb(struct xdrv_info *drv_info, uint64_t fb_cookie)
 
 	list_for_each_entry_safe(buf, q, &drv_info->dumb_buf_list, list) {
 		if (buf->fb_cookie == fb_cookie) {
-			clflush_cache_range(buf->vbuffer, buf->vbuffer_sz);
+			struct scatterlist *sg;
+			unsigned int count;
+
+			for_each_sg(buf->sgt->sgl, sg, buf->sgt->nents, count)
+				clflush_cache_range(sg_virt(sg), sg->length);
 			break;
 		}
 	}
@@ -922,6 +927,7 @@ static void xdrv_sh_buf_free(struct xdrv_shared_buffer_info *buf)
 		kfree(buf->grefs);
 	}
 	kfree(buf->vdirectory);
+	sg_free_table(buf->sgt);
 	kfree(buf);
 }
 
@@ -988,6 +994,8 @@ int xdrv_sh_buf_grant_refs(struct xenbus_device *xb_dev,
 	grant_ref_t priv_gref_head;
 	int ret, i, j, cur_ref;
 	int otherend_id;
+	int count;
+	struct scatterlist *sg;
 
 	ret = gnttab_alloc_grant_references(num_grefs, &priv_gref_head);
 	if (ret < 0)
@@ -1004,15 +1012,25 @@ int xdrv_sh_buf_grant_refs(struct xenbus_device *xb_dev,
 				XEN_PAGE_SIZE * i)), 0);
 		buf->grefs[j++] = cur_ref;
 	}
-	for (i = 0; i < num_pages_vbuffer; i++) {
-		cur_ref = gnttab_claim_grant_reference(&priv_gref_head);
-		if (cur_ref < 0)
-			return cur_ref;
-		gnttab_grant_foreign_access_ref(cur_ref, otherend_id,
-			xen_page_to_gfn(virt_to_page(buf->vbuffer +
-				XEN_PAGE_SIZE * i)), 0);
-		buf->grefs[j++] = cur_ref;
+	for_each_sg(buf->sgt->sgl, sg, buf->sgt->nents, count) {
+		struct page *page;
+		int len;
+
+		len = sg->length;
+		page = sg_page(sg);
+		while (len > 0) {
+			cur_ref = gnttab_claim_grant_reference(&priv_gref_head);
+			if (cur_ref < 0)
+				return cur_ref;
+			gnttab_grant_foreign_access_ref(cur_ref, otherend_id,
+				xen_page_to_gfn(page), 0);
+			buf->grefs[j++] = cur_ref;
+			len -= PAGE_SIZE;
+			page++;
+			num_pages_vbuffer--;
+		}
 	}
+	WARN_ON(num_pages_vbuffer != 0);
 	gnttab_free_grant_references(priv_gref_head);
 	return 0;
 }
@@ -1033,17 +1051,17 @@ int xdrv_sh_buf_alloc_buffers(struct xdrv_shared_buffer_info *buf,
 
 static struct xdrv_shared_buffer_info *
 xdrv_sh_buf_alloc(struct xdrv_info *drv_info, uint64_t dumb_cookie,
-	void *vbuffer, unsigned int buffer_size)
+	struct sg_table *sgt, unsigned int buffer_size)
 {
 	struct xdrv_shared_buffer_info *buf;
 	int num_pages_vbuffer, num_pages_dir, num_grefs;
 
-	if (!vbuffer)
+	if (!sgt)
 		return NULL;
 	buf = kzalloc(sizeof(*buf), GFP_KERNEL);
 	if (!buf)
 		return NULL;
-	buf->vbuffer = vbuffer;
+	buf->sgt = sgt;
 	buf->dumb_cookie = dumb_cookie;
 	num_pages_vbuffer = DIV_ROUND_UP(buffer_size, XEN_PAGE_SIZE);
 	/* number of grefs a page can hold with respect to the

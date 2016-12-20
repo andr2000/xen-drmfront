@@ -20,6 +20,7 @@
 struct xdrv_info;
 struct platform_device;
 struct xendrm_du_crtc;
+struct sg_table;
 
 struct xendispl_front_funcs {
 	int (*mode_set)(struct xendrm_du_crtc *du_crtc, uint32_t x, uint32_t y,
@@ -27,7 +28,7 @@ struct xendispl_front_funcs {
 		uint64_t fb_cookie);
 	int (*dbuf_create)(struct xdrv_info *drv_info, uint64_t dumb_cookie,
 		uint32_t width, uint32_t height, uint32_t bpp, uint64_t size,
-		void *vaddr);
+		struct sg_table *sgt);
 	int (*dbuf_destroy)(struct xdrv_info *drv_info, uint64_t dumb_cookie);
 	int (*fb_attach)(struct xdrv_info *drv_info, uint64_t dumb_cookie,
 		uint64_t fb_cookie, uint32_t width, uint32_t height,

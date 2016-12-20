@@ -80,7 +80,8 @@ static int xendrm_dumb_create(struct drm_file *file_priv, struct drm_device *dev
 	}
 	ret = xendrm_du->front_funcs->dbuf_create(
 			xendrm_du->xdrv_info, args->handle, args->width,
-			args->height, args->bpp, args->size, cma_obj->vaddr);
+			args->height, args->bpp, args->size,
+			drm_gem_cma_prime_get_sg_table(gem_obj));
 	if (ret < 0)
 		goto fail_destroy;
 	dumb_info->gem_obj = gem_obj;
