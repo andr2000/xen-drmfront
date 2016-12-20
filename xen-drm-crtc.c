@@ -239,7 +239,14 @@ static int xendrm_du_crtc_props_init(struct xendrm_du_device *xendrm_du,
 static inline bool xendrm_du_crtc_page_flip_pending(
 	struct xendrm_du_crtc *du_crtc)
 {
-	return atomic_read(&du_crtc->pg_flip_pending) != 0;
+	struct drm_device *dev = du_crtc->crtc.dev;
+	bool pending;
+	unsigned long flags;
+
+	spin_lock_irqsave(&dev->event_lock, flags);
+	pending = du_crtc->pg_flip_event != NULL;
+	spin_unlock_irqrestore(&dev->event_lock, flags);
+	return pending;
 }
 
 static int xendrm_du_crtc_do_page_flip(struct drm_crtc *crtc,
@@ -247,7 +254,9 @@ static int xendrm_du_crtc_do_page_flip(struct drm_crtc *crtc,
 	uint32_t drm_flags)
 {
 	struct xendrm_du_crtc *du_crtc = to_xendrm_crtc(crtc);
+	struct drm_device *dev = du_crtc->crtc.dev;
 	struct xendrm_du_device *xendrm_du;
+	unsigned long flags;
 	int ret;
 
 	if (unlikely(xendrm_du_crtc_page_flip_pending(du_crtc))) {
@@ -257,14 +266,19 @@ static int xendrm_du_crtc_do_page_flip(struct drm_crtc *crtc,
 		DRM_ERROR("already have pending page flip\n");
 		return -EBUSY;
 	}
-	atomic_set(&du_crtc->pg_flip_pending, 1);
-	/* FIXME: drm_pending_vblank_event is not yet fully initialized
-	 * by the DRM core, so it cannot be used to send events now
-	 * (see drm_ioctl). there are 2 possible cases:
-	 * 1. backend sends page flip completed before atomic_flush
-	 * 2. backend is clumsy and sends event later than atomic_flush
+
+	/* There are 2 possible cases:
+	 *   1. backend sends page flip completed before atomic_flush
+	 *   2. backend is clumsy and sends event later than atomic_flush
+	 * FIXME: drm_pending_vblank_event is not yet fully initialized
+	 *   by the DRM core, so it cannot be used to send events right now
+	 *   (see drm_ioctl), so use it as a placeholder which will not
+	 *   allow concurrent flips
 	 */
+	spin_lock_irqsave(&dev->event_lock, flags);
+	du_crtc->pg_flip_event = event;
 	atomic_set(&du_crtc->pg_flip_senders, PF_EVT_SENDER_MAX);
+	spin_unlock_irqrestore(&dev->event_lock, flags);
 
 	xendrm_du = du_crtc->xendrm_du;
 
@@ -288,8 +302,10 @@ static int xendrm_du_crtc_do_page_flip(struct drm_crtc *crtc,
 	return 0;
 
 fail:
+	spin_lock_irqsave(&dev->event_lock, flags);
 	atomic_set(&du_crtc->pg_flip_senders, 0);
-	atomic_set(&du_crtc->pg_flip_pending, 0);
+	du_crtc->pg_flip_event = NULL;
+	spin_unlock_irqrestore(&dev->event_lock, flags);
 	return ret;
 }
 
@@ -299,15 +315,11 @@ static void xendrm_du_crtc_ntfy_page_flip_completed(
 	struct drm_device *dev = du_crtc->crtc.dev;
 	unsigned long flags;
 
-	spin_lock_irqsave(&dev->event_lock, flags);
-	if (!du_crtc->pg_flip_event ||
-		!xendrm_du_crtc_page_flip_pending(du_crtc)) {
-		spin_unlock_irqrestore(&dev->event_lock, flags);
+	if (unlikely(!xendrm_du_crtc_page_flip_pending(du_crtc)))
 		return;
-	}
+	spin_lock_irqsave(&dev->event_lock, flags);
 	drm_crtc_send_vblank_event(&du_crtc->crtc, du_crtc->pg_flip_event);
 	du_crtc->pg_flip_event = NULL;
-	atomic_set(&du_crtc->pg_flip_pending, 0);
 	wake_up(&du_crtc->flip_wait);
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 	drm_crtc_vblank_put(&du_crtc->crtc);
@@ -321,8 +333,7 @@ void xendrm_du_crtc_on_page_flip_done(struct xendrm_du_crtc *du_crtc,
 			du_crtc->fb_cookie, fb_cookie);
 		return;
 	}
-	WARN_ON(xendrm_du_crtc_page_flip_pending(du_crtc) &&
-		(atomic_read(&du_crtc->pg_flip_senders) == 0));
+	WARN_ON(atomic_read(&du_crtc->pg_flip_senders) == 0);
 	if (atomic_dec_and_test(&du_crtc->pg_flip_senders))
 		xendrm_du_crtc_ntfy_page_flip_completed(du_crtc);
 }
@@ -388,9 +399,12 @@ static void xendrm_du_crtc_atomic_flush(struct drm_crtc *crtc,
 	if (event) {
 		if (event->event.base.type == DRM_EVENT_FLIP_COMPLETE) {
 			WARN_ON(drm_crtc_vblank_get(crtc) != 0);
+			/* TODO: if the event set at .page_flip was initialized
+			 * properly at this moment we do not need the
+			 * assignment below
+			 */
 			du_crtc->pg_flip_event = event;
-			WARN_ON(xendrm_du_crtc_page_flip_pending(du_crtc) &&
-				(atomic_read(&du_crtc->pg_flip_senders) == 0));
+			WARN_ON(atomic_read(&du_crtc->pg_flip_senders) == 0);
 			if (atomic_dec_and_test(&du_crtc->pg_flip_senders)) {
 				spin_unlock_irqrestore(&dev->event_lock, flags);
 				xendrm_du_crtc_ntfy_page_flip_completed(du_crtc);

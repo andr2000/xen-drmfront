@@ -45,7 +45,6 @@ struct xendrm_du_crtc {
 		struct drm_property *alpha;
 	} props;
 	/* vblank and flip handling */
-	atomic_t pg_flip_pending;
 	atomic_t pg_flip_senders;
 	struct drm_pending_vblank_event *pg_flip_event;
 	wait_queue_head_t flip_wait;
