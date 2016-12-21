@@ -15,11 +15,11 @@
  */
 
 #include <drm/drmP.h>
-#include <drm/drm_fb_cma_helper.h>
-#include <drm/drm_gem_cma_helper.h>
+#include <drm/drm_gem.h>
 
 #include "xen-drm.h"
 #include "xen-drm-front.h"
+#include "xen-drm-gem.h"
 #include "xen-drm-kms.h"
 #include "xen-drm-logs.h"
 
@@ -57,14 +57,13 @@ static int xendrm_dumb_create(struct drm_file *file_priv, struct drm_device *dev
 {
 	struct xendrm_du_device *xendrm_du = dev->dev_private;
 	struct drm_gem_object *gem_obj;
-	struct drm_gem_cma_object *cma_obj;
 	struct xendrm_dumb_info *dumb_info;
 	int ret;
 
 	dumb_info = kzalloc(sizeof(*dumb_info), GFP_KERNEL);
 	if (!dumb_info)
 		return -ENOMEM;
-	ret = drm_gem_cma_dumb_create(file_priv, dev, args);
+	ret = xendrm_gem_dumb_create(file_priv, dev, args);
 	if (ret < 0)
 		goto fail;
 	gem_obj = drm_gem_object_lookup(file_priv, args->handle);
@@ -73,15 +72,10 @@ static int xendrm_dumb_create(struct drm_file *file_priv, struct drm_device *dev
 		goto fail_destroy;
 	}
 	drm_gem_object_unreference_unlocked(gem_obj);
-	cma_obj = to_drm_gem_cma_obj(gem_obj);
-	if (!cma_obj) {
-		ret = -EINVAL;
-		goto fail_destroy;
-	}
 	ret = xendrm_du->front_funcs->dbuf_create(
 			xendrm_du->xdrv_info, args->handle, args->width,
 			args->height, args->bpp, args->size,
-			drm_gem_cma_prime_get_sg_table(gem_obj));
+			xendrm_gem_get_sg_table(gem_obj));
 	if (ret < 0)
 		goto fail_destroy;
 	dumb_info->gem_obj = gem_obj;
@@ -97,7 +91,7 @@ fail:
 	return ret;
 }
 
-static void xendrm_gem_free_object(struct drm_gem_object *gem_obj)
+static void xendrm_free_object(struct drm_gem_object *gem_obj)
 {
 	struct xendrm_du_device *xendrm_du = gem_obj->dev->dev_private;
 	struct xendrm_dumb_info *dumb_info, *q;
@@ -114,7 +108,7 @@ static void xendrm_gem_free_object(struct drm_gem_object *gem_obj)
 			break;
 		}
 	}
-	drm_gem_cma_free_object(gem_obj);
+	xendrm_gem_free_object(gem_obj);
 }
 
 static void xendrm_on_page_flip(struct platform_device *pdev,
@@ -178,7 +172,12 @@ static const struct file_operations xendrm_fops = {
 	.poll           = drm_poll,
 	.read           = drm_read,
 	.llseek         = no_llseek,
-	.mmap           = drm_gem_cma_mmap,
+	.mmap           = xendrm_gem_mmap,
+};
+
+const struct vm_operations_struct xendrm_vm_ops = {
+	.open = drm_gem_vm_open,
+	.close = drm_gem_vm_close,
 };
 
 static struct drm_driver xendrm_driver = {
@@ -189,19 +188,19 @@ static struct drm_driver xendrm_driver = {
 	.enable_vblank             = xendrm_enable_vblank,
 	.disable_vblank            = xendrm_disable_vblank,
 	.get_vblank_counter        = drm_vblank_no_hw_counter,
-	.gem_free_object_unlocked  = xendrm_gem_free_object,
-	.gem_vm_ops                = &drm_gem_cma_vm_ops,
+	.gem_free_object_unlocked  = xendrm_free_object,
+	.gem_vm_ops                = &xendrm_vm_ops,
 	.prime_handle_to_fd        = drm_gem_prime_handle_to_fd,
 	.prime_fd_to_handle        = drm_gem_prime_fd_to_handle,
 	.gem_prime_import          = drm_gem_prime_import,
 	.gem_prime_export          = drm_gem_prime_export,
-	.gem_prime_get_sg_table    = drm_gem_cma_prime_get_sg_table,
-	.gem_prime_import_sg_table = drm_gem_cma_prime_import_sg_table,
-	.gem_prime_vmap            = drm_gem_cma_prime_vmap,
-	.gem_prime_vunmap          = drm_gem_cma_prime_vunmap,
-	.gem_prime_mmap            = drm_gem_cma_prime_mmap,
+	.gem_prime_get_sg_table    = xendrm_gem_get_sg_table,
+	.gem_prime_import_sg_table = xendrm_gem_import_sg_table,
+	.gem_prime_vmap            = xendrm_gem_prime_vmap,
+	.gem_prime_vunmap          = xendrm_gem_prime_vunmap,
+	.gem_prime_mmap            = xendrm_gem_prime_mmap,
 	.dumb_create               = xendrm_dumb_create,
-	.dumb_map_offset           = drm_gem_cma_dumb_map_offset,
+	.dumb_map_offset           = xendrm_gem_dumb_map_offset,
 	.dumb_destroy              = drm_gem_dumb_destroy,
 	.fops                      = &xendrm_fops,
 	.name                      = "xendrm-du",
