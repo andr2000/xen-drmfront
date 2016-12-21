@@ -81,6 +81,28 @@ xendrm_du_drm_connector_detect(struct drm_connector *connector, bool force)
 
 #define XENDRM_NUM_VIDEO_MODES	1
 
+#ifdef CONFIG_VIDEOMODE_HELPERS
+#define xendrm_du_display_mode_from_videomode drm_display_mode_from_videomode
+#else
+static void xendrm_du_display_mode_from_videomode(const struct videomode *vm,
+	struct drm_display_mode *dmode)
+{
+	dmode->hdisplay = vm->hactive;
+	dmode->hsync_start = dmode->hdisplay + vm->hfront_porch;
+	dmode->hsync_end = dmode->hsync_start + vm->hsync_len;
+	dmode->htotal = dmode->hsync_end + vm->hback_porch;
+
+	dmode->vdisplay = vm->vactive;
+	dmode->vsync_start = dmode->vdisplay + vm->vfront_porch;
+	dmode->vsync_end = dmode->vsync_start + vm->vsync_len;
+	dmode->vtotal = dmode->vsync_end + vm->vback_porch;
+
+	dmode->clock = vm->pixelclock / 1000;
+
+	drm_mode_set_name(dmode);
+}
+#endif
+
 static int xendrm_du_drm_connector_get_modes(struct drm_connector *connector)
 {
 	struct xendrm_du_connector *du_connector;
@@ -101,7 +123,7 @@ static int xendrm_du_drm_connector_get_modes(struct drm_connector *connector)
 		videomode.vback_porch + videomode.vsync_len;
 	videomode.pixelclock = width * height * XENDRM_CRTC_VREFRESH_HZ;
 	mode->type = DRM_MODE_TYPE_PREFERRED | DRM_MODE_TYPE_DRIVER;
-	drm_display_mode_from_videomode(&videomode, mode);
+	xendrm_du_display_mode_from_videomode(&videomode, mode);
 	drm_mode_probed_add(connector, mode);
 	return XENDRM_NUM_VIDEO_MODES;
 }
