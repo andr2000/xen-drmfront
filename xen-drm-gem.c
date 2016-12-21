@@ -61,7 +61,10 @@ static struct sg_table *xendrm_gem_alloc(size_t size)
 	for (i = 0; i < num_pages; i++) {
 		struct page *page;
 
-		page = virt_to_page(__get_free_page(GFP_KERNEL));
+		/* Most implementations of dma_alloc_coherent() which we
+		 * emulate will return zeroed memory
+		 */
+		page = virt_to_page(__get_free_page(GFP_KERNEL | __GFP_ZERO));
 		if (!page)
 			goto fail_alloc;
 		pages[i] = page;
