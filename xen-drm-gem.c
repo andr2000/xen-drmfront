@@ -27,10 +27,8 @@
 struct xen_gem_object {
 	struct drm_gem_object base;
 	size_t size;
-	/* allocated by us */
-	void *vaddr;
-	/* imported */
 	struct sg_table *sgt;
+	struct sg_table *sgt_imported;
 };
 
 struct xen_fb {
@@ -47,6 +45,49 @@ static inline struct xen_gem_object *to_xen_gem_obj(
 static inline struct xen_fb *to_xen_fb(struct drm_framebuffer *fb)
 {
 	return container_of(fb, struct xen_fb, fb);
+}
+
+static struct sg_table *xendrm_gem_alloc(size_t size)
+{
+	struct sg_table *sgt;
+	struct page **pages;
+	size_t num_pages;
+	int i;
+
+	num_pages = DIV_ROUND_UP(size, PAGE_SIZE);
+	pages = drm_malloc_ab(num_pages, sizeof(*pages));
+	if (!pages)
+		return NULL;
+	for (i = 0; i < num_pages; i++) {
+		struct page *page;
+
+		page = virt_to_page(__get_free_page(GFP_KERNEL));
+		if (!page)
+			goto fail_alloc;
+		pages[i] = page;
+	}
+	sgt = drm_prime_pages_to_sg(pages, num_pages);
+	drm_free_large(pages);
+	return sgt;
+
+fail_alloc:
+	for (i = 0; i < num_pages; i++)
+		if (!pages[i])
+			__free_page(pages[i]);
+	drm_free_large(pages);
+	return NULL;
+}
+
+static void xendrm_gem_free(struct sg_table *sgt)
+{
+	struct sg_page_iter sg_iter;
+
+	for_each_sg_page(sgt->sgl, &sg_iter, sgt->nents, 0) {
+		struct page *page = sg_page_iter_page(&sg_iter);
+
+		__free_page(page);
+	}
+	sg_free_table(sgt);
 }
 
 static struct xen_gem_object *xendrm_gem_create_obj(struct drm_device *dev,
@@ -86,10 +127,11 @@ static struct xen_gem_object *xendrm_gem_create(struct drm_device *dev,
 	if (IS_ERR(xen_obj))
 		return xen_obj;
 	xen_obj->size = size;
-	xen_obj->vaddr = alloc_pages_exact(size, GFP_KERNEL);
-	if (!xen_obj->vaddr)
+	xen_obj->sgt = xendrm_gem_alloc(size);
+	if (!xen_obj->sgt) {
 		ret = -ENOMEM;
 		goto fail;
+	}
 	return xen_obj;
 
 fail:
@@ -134,10 +176,10 @@ void xendrm_gem_free_object(struct drm_gem_object *gem_obj)
 {
 	struct xen_gem_object *xen_obj = to_xen_gem_obj(gem_obj);
 
-	if (xen_obj->vaddr)
-		free_pages_exact(xen_obj->vaddr, xen_obj->size);
+	if (xen_obj->sgt)
+		xendrm_gem_free(xen_obj->sgt);
 	else if (gem_obj->import_attach)
-		drm_prime_gem_destroy(gem_obj, xen_obj->sgt);
+		drm_prime_gem_destroy(gem_obj, xen_obj->sgt_imported);
 	drm_gem_object_release(gem_obj);
 	kfree(xen_obj);
 }
@@ -146,20 +188,28 @@ struct sg_table *xendrm_gem_get_sg_table(struct drm_gem_object *gem_obj)
 {
 	struct xen_gem_object *xen_obj = to_xen_gem_obj(gem_obj);
 	struct sg_table *sgt;
-	int ret;
+	struct scatterlist *src, *dst;
+	int ret, i;
 
-	if (!xen_obj->vaddr)
+	if (!xen_obj->sgt)
 		return NULL;
 	sgt = kzalloc(sizeof(*sgt), GFP_KERNEL);
 	if (!sgt)
 		return NULL;
-	ret = sg_alloc_table(sgt, 1, GFP_KERNEL);
-	if (unlikely(ret < 0))
+	ret = sg_alloc_table(sgt, xen_obj->sgt->nents, GFP_KERNEL);
+	if (ret < 0)
 		goto fail;
-	sg_set_page(sgt->sgl, virt_to_page(xen_obj->vaddr), xen_obj->size, 0);
+	src = xen_obj->sgt->sgl;
+	dst = sgt->sgl;
+	for (i = 0; i < xen_obj->sgt->nents; i++) {
+		sg_set_page(dst, sg_page(src), src->length, 0);
+		dst = sg_next(dst);
+		src = sg_next(src);
+	}
 	return sgt;
 
 fail:
+	sg_free_table(sgt);
 	kfree(sgt);
 	return NULL;
 }
@@ -172,7 +222,7 @@ struct drm_gem_object *xendrm_gem_import_sg_table(struct drm_device *dev,
 	xen_obj = xendrm_gem_create_obj(dev, attach->dmabuf->size);
 	if (IS_ERR(xen_obj))
 		return ERR_CAST(xen_obj);
-	xen_obj->sgt = sgt;
+	xen_obj->sgt_imported = sgt;
 	return &xen_obj->base;
 }
 
@@ -272,6 +322,39 @@ int xendrm_gem_dumb_map_offset(struct drm_file *file_priv,
 	return 0;
 }
 
+static int xendrm_mmap_sgt(struct sg_table *table, struct vm_area_struct *vma)
+{
+	unsigned long addr = vma->vm_start;
+	unsigned long offset = vma->vm_pgoff * PAGE_SIZE;
+	struct scatterlist *sg;
+	int i;
+	int ret;
+
+	for_each_sg(table->sgl, sg, table->nents, i) {
+		struct page *page = sg_page(sg);
+		unsigned long remainder = vma->vm_end - addr;
+		unsigned long len = sg->length;
+
+		if (offset >= sg->length) {
+			offset -= sg->length;
+			continue;
+		} else if (offset) {
+			page += offset / PAGE_SIZE;
+			len = sg->length - offset;
+			offset = 0;
+		}
+		len = min(len, remainder);
+		ret = remap_pfn_range(vma, addr, page_to_pfn(page), len,
+			vma->vm_page_prot);
+		if (ret < 0)
+			return ret;
+		addr += len;
+		if (addr >= vma->vm_end)
+			return 0;
+	}
+	return 0;
+}
+
 static int xendrm_gem_mmap_obj(struct xen_gem_object *xen_obj,
 	struct vm_area_struct *vma)
 {
@@ -284,10 +367,14 @@ static int xendrm_gem_mmap_obj(struct xen_gem_object *xen_obj,
 	 */
 	vma->vm_flags &= ~VM_PFNMAP;
 	vma->vm_pgoff = 0;
-	ret = dma_mmap_wc(xen_obj->base.dev->dev, vma, xen_obj->vaddr,
-		virt_to_phys(xen_obj->vaddr), vma->vm_end - vma->vm_start);
-	if (ret)
+	/* this is the only way to mmap for unprivileged domain */
+	vma->vm_page_prot = PAGE_SHARED;
+
+	ret = xendrm_mmap_sgt(xen_obj->sgt, vma);
+	if (ret < 0) {
+		DRM_ERROR("Failed to remap\n");
 		drm_gem_vm_close(vma);
+	}
 	return ret;
 }
 
@@ -308,13 +395,31 @@ int xendrm_gem_mmap(struct file *filp, struct vm_area_struct *vma)
 void *xendrm_gem_prime_vmap(struct drm_gem_object *gem_obj)
 {
 	struct xen_gem_object *xen_obj = to_xen_gem_obj(gem_obj);
+	struct page **pages;
+	size_t num_pages;
+	void *vaddr;
+	int ret;
 
-	return xen_obj->vaddr;
+	num_pages = DIV_ROUND_UP(xen_obj->size, PAGE_SIZE);
+	pages = drm_malloc_ab(num_pages, sizeof(*pages));
+	if (!pages)
+		return NULL;
+
+	vaddr = NULL;
+	ret = drm_prime_sg_to_page_addr_arrays(xen_obj->sgt, pages, NULL,
+		num_pages);
+	if (ret < 0)
+		goto fail;
+
+	vaddr = vmap(pages, num_pages, GFP_KERNEL, PAGE_SHARED);
+fail:
+	drm_free_large(pages);
+	return vaddr;
 }
 
 void xendrm_gem_prime_vunmap(struct drm_gem_object *gem_obj, void *vaddr)
 {
-	/* Nothing to do */
+	vunmap(vaddr);
 }
 
 int xendrm_gem_prime_mmap(struct drm_gem_object *gem_obj,
