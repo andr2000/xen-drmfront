@@ -278,6 +278,7 @@ static int xendrm_du_crtc_do_page_flip(struct drm_crtc *crtc,
 	spin_lock_irqsave(&dev->event_lock, flags);
 	du_crtc->pg_flip_event = event;
 	atomic_set(&du_crtc->pg_flip_senders, PF_EVT_SENDER_MAX);
+	du_crtc->fb_cookie = xendrm_fb_to_cookie(fb);
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 
 	xendrm_du = du_crtc->xendrm_du;
@@ -296,7 +297,6 @@ static int xendrm_du_crtc_do_page_flip(struct drm_crtc *crtc,
 		goto fail;
 	}
 
-	du_crtc->fb_cookie = xendrm_fb_to_cookie(fb);
 	/* restart page flip time-out counter */
 	xendrm_vtimer_restart_to(xendrm_du, du_crtc->index);
 	return 0;
@@ -305,6 +305,7 @@ fail:
 	spin_lock_irqsave(&dev->event_lock, flags);
 	atomic_set(&du_crtc->pg_flip_senders, 0);
 	du_crtc->pg_flip_event = NULL;
+	du_crtc->fb_cookie = xendrm_fb_to_cookie(NULL);
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 	return ret;
 }
