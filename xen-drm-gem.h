@@ -19,6 +19,22 @@
 
 #include <drm/drmP.h>
 
+#ifdef CONFIG_DRM_GEM_CMA_HELPER
+#include <drm/drm_fb_cma_helper.h>
+#include <drm/drm_gem_cma_helper.h>
+
+#define xendrm_gem_get_sg_table         drm_gem_cma_prime_get_sg_table
+#define xendrm_gem_dumb_create          drm_gem_cma_dumb_create
+#define xendrm_gem_free_object          drm_gem_cma_free_object
+#define xendrm_gem_dumb_map_offset      drm_gem_cma_dumb_map_offset
+#define xendrm_gem_mmap                 drm_gem_cma_mmap
+#define xendrm_gem_import_sg_table      drm_gem_cma_prime_import_sg_table
+#define xendrm_gem_prime_vmap           drm_gem_cma_prime_vmap
+#define xendrm_gem_prime_vunmap         drm_gem_cma_prime_vunmap
+#define xendrm_gem_prime_mmap           drm_gem_cma_prime_mmap
+#define xendrm_gem_fb_destroy           drm_fb_cma_destroy
+#define xendrm_gem_fb_create_with_funcs drm_fb_cma_create_with_funcs
+#else
 int xendrm_gem_dumb_create(struct drm_file *file_priv, struct drm_device *dev,
 	struct drm_mode_create_dumb *args);
 void xendrm_gem_free_object(struct drm_gem_object *gem_obj);
@@ -39,5 +55,6 @@ void xendrm_gem_fb_destroy(struct drm_framebuffer *fb);
 struct drm_framebuffer *xendrm_gem_fb_create_with_funcs(struct drm_device *dev,
 	struct drm_file *file_priv, const struct drm_mode_fb_cmd2 *mode_cmd,
 	const struct drm_framebuffer_funcs *funcs);
+#endif /* CONFIG_DRM_GEM_CMA_HELPER */
 
 #endif /* __XEN_DRM_GEM_H */
