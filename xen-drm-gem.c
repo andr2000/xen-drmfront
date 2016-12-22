@@ -56,6 +56,7 @@ static struct sg_table *xendrm_gem_alloc(size_t size)
 		size_t size;
 	} *chunks;
 	size_t need_sz, chunk_sz, num_chunks;
+	unsigned int chunk_order;
 	int ret, i;
 
 	BUG_ON(size % PAGE_SIZE);
@@ -66,17 +67,24 @@ static struct sg_table *xendrm_gem_alloc(size_t size)
 	chunks = drm_malloc_ab(size / PAGE_SIZE, sizeof(*chunks));
 	if (!chunks)
 		return NULL;
-	need_sz = size;
-	chunk_sz = need_sz;
-	num_chunks = 0;
 	DRM_ERROR("++++++++++++++ Allocating %zu bytes\n", size);
-	if (get_order(size) >= MAX_ORDER)
-		chunk_sz = (1 << (MAX_ORDER - 1)) * PAGE_SIZE;
+	need_sz = size;
+	chunk_sz = size;
+	num_chunks = 0;
 	do {
 		void *vaddr;
 
-		vaddr = alloc_pages_exact(chunk_sz, GFP_KERNEL | __GFP_ZERO);
-		DRM_ERROR("++++++++++++++ Requested %zu bytes, vaddr %p\n", chunk_sz, vaddr);
+		chunk_order = get_order(chunk_sz);
+		if (likely(chunk_order < MAX_ORDER)) {
+			if (need_sz < (1 << chunk_order) * PAGE_SIZE)
+				chunk_order--;
+		} else {
+			chunk_order = MAX_ORDER - 1;
+		}
+		chunk_sz = (1 << chunk_order) * PAGE_SIZE;
+		vaddr = page_to_virt(alloc_pages(GFP_KERNEL | __GFP_ZERO,
+			chunk_order));
+		DRM_ERROR("++++++++++++++ Requested %zu bytes, vaddr %p need_sz %zu\n", chunk_sz, vaddr, need_sz);
 		if (vaddr) {
 			chunks[num_chunks].vaddr = vaddr;
 			chunks[num_chunks++].size = chunk_sz;
@@ -84,13 +92,10 @@ static struct sg_table *xendrm_gem_alloc(size_t size)
 			chunk_sz = need_sz;
 			continue;
 		}
-		if (unlikely(chunk_sz <= PAGE_SIZE)) {
+		if (unlikely(chunk_sz == PAGE_SIZE)) {
 			DRM_ERROR("++++++++++++++ Failed with chunk_sz %zu bytes\n", chunk_sz);
 			goto fail_nomem;
 		}
-		/* now try to allocate with power of 2 sizes */
-		chunk_sz = (1 << get_order(chunk_sz / 2)) * PAGE_SIZE;
-		DRM_ERROR("++++++++++++++ Trying chunk_sz %zu bytes, need_sz %zu\n", chunk_sz, need_sz);
 	} while (need_sz);
 	sgt = kmalloc(sizeof(*sgt), GFP_KERNEL);
 	if (!sgt)
@@ -110,7 +115,8 @@ fail_sgt:
 	kfree(sgt);
 fail_nomem:
 	for (i = 0; i < num_chunks; i++)
-		free_pages_exact(chunks[i].vaddr, chunks[i].size);
+		free_pages((unsigned long)chunks[i].vaddr,
+			get_order(chunks[i].size));
 	drm_free_large(chunks);
 	return NULL;
 }
@@ -121,7 +127,8 @@ static void xendrm_gem_free(struct sg_table *sgt)
 	int i;
 
 	for_each_sg(sgt->sgl, sg, sgt->nents, i)
-		free_pages_exact(sg_virt(sg), sg->length);
+		free_pages((unsigned long)sg_virt(sg),
+			get_order(sg->length));
 	sg_free_table(sgt);
 	kfree(sgt);
 }
