@@ -50,47 +50,80 @@ static inline struct xen_fb *to_xen_fb(struct drm_framebuffer *fb)
 static struct sg_table *xendrm_gem_alloc(size_t size)
 {
 	struct sg_table *sgt;
-	struct page **pages;
-	size_t num_pages;
-	int i;
+	struct scatterlist *sg;
+	struct chunk {
+		void *vaddr;
+		size_t size;
+	} *chunks;
+	size_t need_sz, chunk_sz, num_chunks;
+	int ret, i;
 
-	num_pages = DIV_ROUND_UP(size, PAGE_SIZE);
-	pages = kcalloc(num_pages, sizeof(*pages), GFP_KERNEL);
-	if (!pages)
+	BUG_ON(size % PAGE_SIZE);
+	/* FIXME: we don't know how many chunks will be there,
+	 * so cannot allocate sg table now. if we are not lucky
+	 * we'll end up with single pages for all the requested buffer
+	 */
+	chunks = drm_malloc_ab(size / PAGE_SIZE, sizeof(*chunks));
+	if (!chunks)
 		return NULL;
-	for (i = 0; i < num_pages; i++) {
-		struct page *page;
+	need_sz = size;
+	chunk_sz = need_sz;
+	num_chunks = 0;
+	DRM_ERROR("++++++++++++++ Allocating %zu bytes\n", size);
+	if (get_order(size) >= MAX_ORDER)
+		chunk_sz = (1 << (MAX_ORDER - 1)) * PAGE_SIZE;
+	do {
+		void *vaddr;
 
-		/* Most implementations of dma_alloc_coherent() which we
-		 * emulate will return zeroed memory
-		 */
-		page = virt_to_page(__get_free_page(GFP_KERNEL | __GFP_ZERO));
-		if (!page)
-			goto fail_alloc;
-		pages[i] = page;
+		vaddr = alloc_pages_exact(chunk_sz, GFP_KERNEL | __GFP_ZERO);
+		DRM_ERROR("++++++++++++++ Requested %zu bytes, vaddr %p\n", chunk_sz, vaddr);
+		if (vaddr) {
+			chunks[num_chunks].vaddr = vaddr;
+			chunks[num_chunks++].size = chunk_sz;
+			need_sz -= chunk_sz;
+			chunk_sz = need_sz;
+			continue;
+		}
+		if (unlikely(chunk_sz <= PAGE_SIZE)) {
+			DRM_ERROR("++++++++++++++ Failed with chunk_sz %zu bytes\n", chunk_sz);
+			goto fail_nomem;
+		}
+		/* now try to allocate with power of 2 sizes */
+		chunk_sz = (1 << get_order(chunk_sz / 2)) * PAGE_SIZE;
+		DRM_ERROR("++++++++++++++ Trying chunk_sz %zu bytes, need_sz %zu\n", chunk_sz, need_sz);
+	} while (need_sz);
+	sgt = kmalloc(sizeof(*sgt), GFP_KERNEL);
+	if (!sgt)
+		goto fail_nomem;
+	ret = sg_alloc_table(sgt, num_chunks, GFP_KERNEL);
+	if (ret < 0)
+		goto fail_sgt;
+	DRM_ERROR("++++++++++++++ Filling sgt with %zu chunks\n", num_chunks);
+	for_each_sg(sgt->sgl, sg, num_chunks, i) {
+		DRM_ERROR("++++++++++++++ Chunk %d size %zu\n", i, chunks[i].size);
+		sg_set_buf(sg, chunks[i].vaddr, chunks[i].size);
 	}
-	sgt = drm_prime_pages_to_sg(pages, num_pages);
-	kfree(pages);
+	drm_free_large(chunks);
 	return sgt;
 
-fail_alloc:
-	for (i = 0; i < num_pages; i++)
-		if (!pages[i])
-			__free_page(pages[i]);
-	kfree(pages);
+fail_sgt:
+	kfree(sgt);
+fail_nomem:
+	for (i = 0; i < num_chunks; i++)
+		free_pages_exact(chunks[i].vaddr, chunks[i].size);
+	drm_free_large(chunks);
 	return NULL;
 }
 
 static void xendrm_gem_free(struct sg_table *sgt)
 {
-	struct sg_page_iter sg_iter;
+	struct scatterlist *sg;
+	int i;
 
-	for_each_sg_page(sgt->sgl, &sg_iter, sgt->nents, 0) {
-		struct page *page = sg_page_iter_page(&sg_iter);
-
-		__free_page(page);
-	}
+	for_each_sg(sgt->sgl, sg, sgt->nents, i)
+		free_pages_exact(sg_virt(sg), sg->length);
 	sg_free_table(sgt);
+	kfree(sgt);
 }
 
 static struct xen_gem_object *xendrm_gem_create_obj(struct drm_device *dev,
@@ -330,8 +363,7 @@ static int xendrm_mmap_sgt(struct sg_table *table, struct vm_area_struct *vma)
 	unsigned long addr = vma->vm_start;
 	unsigned long offset = vma->vm_pgoff * PAGE_SIZE;
 	struct scatterlist *sg;
-	int i;
-	int ret;
+	int ret, i;
 
 	for_each_sg(table->sgl, sg, table->nents, i) {
 		struct page *page = sg_page(sg);
