@@ -55,7 +55,7 @@ static struct sg_table *xendrm_gem_alloc(size_t size)
 	int i;
 
 	num_pages = DIV_ROUND_UP(size, PAGE_SIZE);
-	pages = drm_malloc_ab(num_pages, sizeof(*pages));
+	pages = kcalloc(num_pages, sizeof(*pages), GFP_KERNEL);
 	if (!pages)
 		return NULL;
 	for (i = 0; i < num_pages; i++) {
@@ -70,14 +70,14 @@ static struct sg_table *xendrm_gem_alloc(size_t size)
 		pages[i] = page;
 	}
 	sgt = drm_prime_pages_to_sg(pages, num_pages);
-	drm_free_large(pages);
+	kfree(pages);
 	return sgt;
 
 fail_alloc:
 	for (i = 0; i < num_pages; i++)
 		if (!pages[i])
 			__free_page(pages[i]);
-	drm_free_large(pages);
+	kfree(pages);
 	return NULL;
 }
 
