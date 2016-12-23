@@ -896,7 +896,8 @@ static void xdrv_sh_buf_free(struct xdrv_shared_buffer_info *buf)
 		 * the one which is used for the buffer which is expected
 		 * to be released at this time
 		 */
-		if (unlikely(gnttab_query_foreign_access(buf->grefs[1]))) {
+		if (unlikely(gnttab_query_foreign_access(buf->grefs[1]) &&
+				buf->num_grefs)) {
 			int try = 10;
 
 			/* reference is not yet updated by the Xen, we can
