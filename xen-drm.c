@@ -21,7 +21,6 @@
 #include "xen-drm-front.h"
 #include "xen-drm-gem.h"
 #include "xen-drm-kms.h"
-#include "xen-drm-logs.h"
 
 struct xendrm_dumb_info {
 	struct list_head list;
@@ -223,7 +222,7 @@ int xendrm_probe(struct platform_device *pdev,
 	int ret;
 
 	platdata = dev_get_platdata(&pdev->dev);
-	LOG0("Creating %s", xendrm_driver.desc);
+	DRM_INFO("Creating %s\n", xendrm_driver.desc);
 	/* Allocate and initialize the DRM and xendrm device structures. */
 	xendrm_du = devm_kzalloc(&pdev->dev, sizeof(*xendrm_du), GFP_KERNEL);
 	if (!xendrm_du)

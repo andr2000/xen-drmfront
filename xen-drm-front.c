@@ -37,8 +37,6 @@
 
 #include "xen-drm.h"
 #include "xen-drm-front.h"
-#include "xen-drm-logs.h"
-
 
 #define GRANT_INVALID_REF	0
 /* timeout in ms to wait for backend to respond */
@@ -677,7 +675,7 @@ static int xdrv_evtchnl_publish(struct xenbus_transaction xbt,
 	return 0;
 
 fail:
-	LOG0("Error %s with err %d", message, ret);
+	DRM_ERROR("Error %s with err %d\n", message, ret);
 	return ret;
 }
 
@@ -709,13 +707,13 @@ static int xdrv_evtchnl_create_all(struct xdrv_info *drv_info)
 		ret = xdrv_evtchnl_alloc(drv_info, conn,
 			&drv_info->evt_pairs[conn].ctrl, EVTCHNL_TYPE_CTRL);
 		if (ret < 0) {
-			LOG0("Error allocating control channel");
+			DRM_ERROR("Error allocating control channel\n");
 			goto fail;
 		}
 		ret = xdrv_evtchnl_alloc(drv_info, conn,
 			&drv_info->evt_pairs[conn].evt, EVTCHNL_TYPE_EVT);
 		if (ret < 0) {
-			LOG0("Error allocating in-event channel");
+			DRM_ERROR("Error allocating in-event channel\n");
 			goto fail;
 		}
 	}
@@ -821,10 +819,10 @@ static int xdrv_cfg_connector(struct xdrv_info *drv_info,
 		connector->width = 0;
 		connector->height = 0;
 		ret = -EINVAL;
-		LOG0("Wrong connector resolution");
+		DRM_ERROR("Wrong connector resolution\n");
 		goto fail;
 	}
-	LOG0("Connector %s: resolution %dx%d",
+	DRM_INFO("Connector %s: resolution %dx%d\n",
 		connector_path, connector->width, connector->height);
 	ret = 0;
 fail:
@@ -845,12 +843,12 @@ static int xdrv_cfg_card(struct xdrv_info *drv_info,
 		&num_conn);
 	kfree(connector_nodes);
 	if (!num_conn) {
-		LOG0("No connectors configured at %s/%s",
+		DRM_ERROR("No connectors configured at %s/%s\n",
 			path, XENDISPL_PATH_CONNECTOR);
 		return -ENODEV;
 	}
 	if (num_conn > XENDRM_DU_MAX_CRTCS) {
-		LOG0("Only %d connectors supported, skipping the rest",
+		DRM_WARN("Only %d connectors supported, skipping the rest\n",
 			XENDRM_DU_MAX_CRTCS);
 		num_conn = XENDRM_DU_MAX_CRTCS;
 	}
@@ -1149,7 +1147,7 @@ static int xdrv_be_on_initwait(struct xdrv_info *drv_info)
 	ret = xdrv_cfg_card(drv_info, cfg_plat_data);
 	if (ret < 0)
 		return ret;
-	LOG0("Have %d conectors", cfg_plat_data->num_connectors);
+	DRM_INFO("Have %d conectors\n", cfg_plat_data->num_connectors);
 	/* create event channels for all streams and publish */
 	ret = xdrv_evtchnl_create_all(drv_info);
 	if (ret < 0)
@@ -1169,7 +1167,7 @@ static void xdrv_be_on_disconnected(struct xdrv_info *drv_info)
 
 	if (drv_info->ddrv_pdev) {
 		if (xendrm_is_used(drv_info->ddrv_pdev)) {
-			LOG0("DRM driver still in use, deferring removal");
+			DRM_WARN("DRM driver still in use, deferring removal\n");
 			removed = false;
 		} else {
 			xdrv_remove_internal(drv_info);
@@ -1186,7 +1184,7 @@ static void xdrv_drm_unload(struct xdrv_info *drv_info)
 {
 	if (drv_info->xb_dev->state != XenbusStateReconfiguring)
 		return;
-	LOG0("Can try removing driver now");
+	DRM_INFO("Can try removing driver now\n");
 	xenbus_switch_state(drv_info->xb_dev, XenbusStateInitialising);
 }
 
@@ -1196,7 +1194,7 @@ static void xdrv_be_on_changed(struct xenbus_device *xb_dev,
 	struct xdrv_info *drv_info = dev_get_drvdata(&xb_dev->dev);
 	int ret;
 
-	LOG0("Backend state is %s, front is %s",
+	DRM_DEBUG("Backend state is %s, front is %s\n",
 		xenbus_strstate(backend_state),
 		xenbus_strstate(xb_dev->state));
 	switch (backend_state) {
@@ -1284,18 +1282,18 @@ static int __init xdrv_init(void)
 	if (!xen_domain())
 		return -ENODEV;
 	if (xen_initial_domain()) {
-		LOG0(XENDISPL_DRIVER_NAME " cannot run in Dom0");
+		DRM_ERROR(XENDISPL_DRIVER_NAME " cannot run in Dom0\n");
 		return -ENODEV;
 	}
 	if (!xen_has_pv_devices())
 		return -ENODEV;
-	LOG0("Registering XEN PV " XENDISPL_DRIVER_NAME);
+	DRM_INFO("Registering XEN PV " XENDISPL_DRIVER_NAME "\n");
 	return xenbus_register_frontend(&xen_driver);
 }
 
 static void __exit xdrv_cleanup(void)
 {
-	LOG0("Unregistering XEN PV " XENDISPL_DRIVER_NAME);
+	DRM_INFO("Unregistering XEN PV " XENDISPL_DRIVER_NAME "\n");
 	xenbus_unregister_driver(&xen_driver);
 }
 
