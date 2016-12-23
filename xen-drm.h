@@ -19,14 +19,13 @@
 #ifndef __XEN_DRM_H
 #define __XEN_DRM_H
 
-#include <linux/platform_device.h>
-
 #include "xen-drm-crtc.h"
 #include "xen-drm-timer.h"
 
 #define XENDRM_DU_MAX_CRTCS	4
 
 struct xendispl_front_ops;
+struct platform_device;
 
 struct xendrm_du_device {
 	struct xdrv_info *xdrv_info;
