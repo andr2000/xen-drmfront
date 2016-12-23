@@ -101,7 +101,7 @@ struct xdrv_info {
 	struct xenbus_device *xb_dev;
 	spinlock_t io_lock;
 	struct mutex mutex;
-	bool ddrv_registered;
+	bool drm_pdrv_registered;
 	/* virtual DRM platform device */
 	struct platform_device *drm_pdev;
 
@@ -260,7 +260,6 @@ int xendispl_front_dbuf_destroy(struct xdrv_info *drv_info,
 		return -EIO;
 	spin_lock_irqsave(&drv_info->io_lock, flags);
 	req = ddrv_be_prepare_req(evtchnl, XENDISPL_OP_DBUF_DESTROY);
-
 	req->op.dbuf_destroy.dbuf_cookie = dumb_cookie;
 	ret = ddrv_be_stream_do_io(evtchnl, req, flags);
 	xdrv_sh_buf_free_by_dumb_cookie(drv_info, dumb_cookie);
@@ -386,11 +385,6 @@ static int ddrv_probe(struct platform_device *pdev)
 	return xendrm_probe(pdev, &xendispl_front_funcs);
 }
 
-static int ddrv_remove(struct platform_device *pdev)
-{
-	return xendrm_remove(pdev);
-}
-
 struct platform_device_info ddrv_platform_info = {
 	.name = XENDISPL_DRIVER_NAME,
 	.id = 0,
@@ -400,7 +394,7 @@ struct platform_device_info ddrv_platform_info = {
 
 static struct platform_driver ddrv_info = {
 	.probe		= ddrv_probe,
-	.remove		= ddrv_remove,
+	.remove		= xendrm_remove,
 	.driver		= {
 		.name	= XENDISPL_DRIVER_NAME,
 	},
@@ -408,12 +402,12 @@ static struct platform_driver ddrv_info = {
 
 static void ddrv_cleanup(struct xdrv_info *drv_info)
 {
-	if (!drv_info->ddrv_registered)
+	if (!drv_info->drm_pdrv_registered)
 		return;
 	if (drv_info->drm_pdev)
 		platform_device_unregister(drv_info->drm_pdev);
 	platform_driver_unregister(&ddrv_info);
-	drv_info->ddrv_registered = false;
+	drv_info->drm_pdrv_registered = false;
 	drv_info->drm_pdev = NULL;
 }
 
@@ -425,7 +419,7 @@ static int ddrv_init(struct xdrv_info *drv_info)
 	ret = platform_driver_register(&ddrv_info);
 	if (ret < 0)
 		return ret;
-	drv_info->ddrv_registered = true;
+	drv_info->drm_pdrv_registered = true;
 	platdata = &drv_info->cfg_plat_data;
 	/* pass card configuration via platform data */
 	ddrv_platform_info.data = platdata;
@@ -454,11 +448,10 @@ static irqreturn_t xdrv_evtchnl_interrupt_ctrl(int irq, void *dev_id)
 	spin_lock_irqsave(&drv_info->io_lock, flags);
 	if (unlikely(channel->state != EVTCHNL_STATE_CONNECTED))
 		goto out;
-
- again:
+again:
 	rp = channel->u.ctrl.ring.sring->rsp_prod;
-	virt_rmb(); /* Ensure we see queued responses up to 'rp'. */
-
+	/* Ensure we see queued responses up to 'rp'. */
+	virt_rmb();
 	for (i = channel->u.ctrl.ring.rsp_cons; i != rp; i++) {
 		resp = RING_GET_RESPONSE(&channel->u.ctrl.ring, i);
 		if (unlikely(resp->id != channel->evt_id))
@@ -480,9 +473,7 @@ static irqreturn_t xdrv_evtchnl_interrupt_ctrl(int irq, void *dev_id)
 			break;
 		}
 	}
-
 	channel->u.ctrl.ring.rsp_cons = i;
-
 	if (i != channel->u.ctrl.ring.req_prod_pvt) {
 		int more_to_do;
 
@@ -492,7 +483,6 @@ static irqreturn_t xdrv_evtchnl_interrupt_ctrl(int irq, void *dev_id)
 			goto again;
 	} else
 		channel->u.ctrl.ring.sring->rsp_event = i + 1;
-
 out:
 	spin_unlock_irqrestore(&drv_info->io_lock, flags);
 	return IRQ_HANDLED;
@@ -509,7 +499,6 @@ static irqreturn_t xdrv_evtchnl_interrupt_evt(int irq, void *dev_id)
 	spin_lock_irqsave(&drv_info->io_lock, flags);
 	if (unlikely(channel->state != EVTCHNL_STATE_CONNECTED))
 		goto out;
-
 	prod = page->in_prod;
 	/* ensure we see ring contents up to prod */
 	virt_rmb();
@@ -534,7 +523,6 @@ static irqreturn_t xdrv_evtchnl_interrupt_evt(int irq, void *dev_id)
 	page->in_cons = cons;
 	/* ensure ring contents */
 	virt_wmb();
-
 out:
 	spin_unlock_irqrestore(&drv_info->io_lock, flags);
 	return IRQ_HANDLED;
@@ -608,7 +596,6 @@ static int xdrv_evtchnl_alloc(struct xdrv_info *drv_info, int index,
 		ret = -ENOMEM;
 		goto fail;
 	}
-
 	if (type == EVTCHNL_TYPE_CTRL) {
 		struct xen_displif_sring *sring;
 
@@ -663,7 +650,6 @@ static int xdrv_evtchnl_publish(struct xenbus_transaction xbt,
 		message = "writing ring-ref";
 		goto fail;
 	}
-
 	/* write event channel ring reference */
 	ret = xenbus_printf(xbt, path, node_chnl, "%u",
 		evt_channel->port);
@@ -905,7 +891,8 @@ static void xdrv_sh_buf_free(struct xdrv_shared_buffer_info *buf)
 
 	if (buf->grefs) {
 		/* [0] entry is used for page directory, so skip it and use
-		 * the one which is used for the buffer
+		 * the one which is used for the buffer which is expected
+		 * to be released at this time
 		 */
 		if (unlikely(gnttab_query_foreign_access(buf->grefs[1]))) {
 			int try = 10;
@@ -1105,14 +1092,12 @@ static int xdrv_probe(struct xenbus_device *xb_dev,
 		ret = -ENOMEM;
 		goto fail;
 	}
-
 	xenbus_switch_state(xb_dev, XenbusStateInitialising);
-
 	drv_info->xb_dev = xb_dev;
 	spin_lock_init(&drv_info->io_lock);
 	INIT_LIST_HEAD(&drv_info->dumb_buf_list);
 	mutex_init(&drv_info->mutex);
-	drv_info->ddrv_registered = false;
+	drv_info->drm_pdrv_registered = false;
 	dev_set_drvdata(&xb_dev->dev, drv_info);
 	return 0;
 fail:
@@ -1189,8 +1174,7 @@ static void xdrv_be_on_changed(struct xenbus_device *xb_dev,
 	int ret;
 
 	DRM_DEBUG("Backend state is %s, front is %s\n",
-		xenbus_strstate(backend_state),
-		xenbus_strstate(xb_dev->state));
+		xenbus_strstate(backend_state), xenbus_strstate(xb_dev->state));
 	switch (backend_state) {
 	case XenbusStateReconfiguring:
 		/* fall through */
