@@ -1036,8 +1036,11 @@ int xdrv_sh_buf_alloc_buffers(struct xdrv_shared_buffer_info *buf,
 	if (!buf->grefs)
 		return -ENOMEM;
 	buf->vdirectory = kcalloc(num_pages_dir, XEN_PAGE_SIZE, GFP_KERNEL);
-	if (!buf->vdirectory)
+	if (!buf->vdirectory) {
+		kfree(buf->grefs);
+		buf->grefs = NULL;
 		return -ENOMEM;
+	}
 	buf->vbuffer_sz = num_pages_vbuffer * XEN_PAGE_SIZE;
 	return 0;
 }
