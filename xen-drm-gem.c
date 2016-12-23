@@ -67,7 +67,6 @@ static struct sg_table *xendrm_gem_alloc(size_t size)
 	chunks = drm_malloc_ab(size / PAGE_SIZE, sizeof(*chunks));
 	if (!chunks)
 		return NULL;
-	DRM_ERROR("++++++++++++++ Allocating %zu bytes\n", size);
 	need_sz = size;
 	chunk_sz = size;
 	num_chunks = 0;
@@ -84,7 +83,6 @@ static struct sg_table *xendrm_gem_alloc(size_t size)
 		chunk_sz = (1 << chunk_order) * PAGE_SIZE;
 		vaddr = page_to_virt(alloc_pages(GFP_KERNEL | __GFP_ZERO,
 			chunk_order));
-		DRM_ERROR("++++++++++++++ Requested %zu bytes, vaddr %p need_sz %zu\n", chunk_sz, vaddr, need_sz);
 		if (vaddr) {
 			chunks[num_chunks].vaddr = vaddr;
 			chunks[num_chunks++].size = chunk_sz;
@@ -93,7 +91,6 @@ static struct sg_table *xendrm_gem_alloc(size_t size)
 			continue;
 		}
 		if (unlikely(chunk_sz == PAGE_SIZE)) {
-			DRM_ERROR("++++++++++++++ Failed with chunk_sz %zu bytes\n", chunk_sz);
 			goto fail_nomem;
 		}
 	} while (need_sz);
@@ -103,11 +100,8 @@ static struct sg_table *xendrm_gem_alloc(size_t size)
 	ret = sg_alloc_table(sgt, num_chunks, GFP_KERNEL);
 	if (ret < 0)
 		goto fail_sgt;
-	DRM_ERROR("++++++++++++++ Filling sgt with %zu chunks\n", num_chunks);
-	for_each_sg(sgt->sgl, sg, num_chunks, i) {
-		DRM_ERROR("++++++++++++++ Chunk %d size %zu\n", i, chunks[i].size);
+	for_each_sg(sgt->sgl, sg, num_chunks, i)
 		sg_set_buf(sg, chunks[i].vaddr, chunks[i].size);
-	}
 	drm_free_large(chunks);
 	return sgt;
 
@@ -306,7 +300,8 @@ struct drm_framebuffer *xendrm_gem_fb_create_with_funcs(struct drm_device *dev,
 
 	/* we do not support formats that require more than 1 plane */
 	if (drm_format_num_planes(mode_cmd->pixel_format) != 1) {
-		DRM_ERROR("Unsupported pixel format\n");
+		DRM_ERROR("Unsupported pixel format 0x%04x\n",
+			mode_cmd->pixel_format);
 		return NULL;
 	}
 	hsub = drm_format_horz_chroma_subsampling(mode_cmd->pixel_format);
@@ -414,7 +409,7 @@ static int xendrm_gem_mmap_obj(struct xen_gem_object *xen_obj,
 
 	ret = xendrm_mmap_sgt(xen_obj->sgt, vma);
 	if (ret < 0) {
-		DRM_ERROR("Failed to remap\n");
+		DRM_ERROR("Failed to remap: %d\n", ret);
 		drm_gem_vm_close(vma);
 	}
 	return ret;

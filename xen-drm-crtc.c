@@ -275,7 +275,7 @@ static int xendrm_crtc_do_page_flip(struct drm_crtc *crtc,
 		/* this can happen if user space doesn't honor
 		 * page flip completed events
 		 */
-		DRM_ERROR("already have pending page flip\n");
+		DRM_WARN("Already have pending page flip\n");
 		return -EBUSY;
 	}
 
@@ -372,14 +372,14 @@ static int xendrm_crtc_set_config(struct drm_mode_set *set)
 			set->fb->width, set->fb->height,
 			set->fb->bits_per_pixel, xendrm_fb_to_cookie(set->fb));
 		if (ret < 0) {
-			DRM_ERROR("Failed to set mode to back, ret %d\n", ret);
+			DRM_ERROR("Failed to set mode to back: %d\n", ret);
 			return ret;
 		}
 	} else {
 		ret = xendrm_dev->front_ops->mode_set(xen_crtc,
 			0, 0, 0, 0, 0, 0);
 		if (ret < 0)
-			DRM_ERROR("Failed to set mode to back, ret %d\n", ret);
+			DRM_ERROR("Failed to set mode to back: %d\n", ret);
 		/* fall through - at least try to set mode locally */
 	}
 	return drm_atomic_helper_set_config(set);

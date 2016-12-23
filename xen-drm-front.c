@@ -432,7 +432,7 @@ static int ddrv_init(struct xdrv_info *drv_info)
 	return 0;
 
 fail:
-	dev_err(&drv_info->xb_dev->dev, "Failed to register DRM driver");
+	DRM_ERROR("Failed to register DRM driver\n");
 	ddrv_cleanup(drv_info);
 	return -ENODEV;
 }
@@ -467,8 +467,7 @@ again:
 			complete(&channel->u.ctrl.completion);
 			break;
 		default:
-			dev_err(&drv_info->xb_dev->dev,
-				"Operation %d is not supported",
+			DRM_ERROR("Operation %d is not supported\n",
 				resp->operation);
 			break;
 		}
@@ -631,7 +630,7 @@ static int xdrv_evtchnl_alloc(struct xdrv_info *drv_info, int index,
 	return 0;
 
 fail:
-	dev_err(&xb_dev->dev, "Failed to allocate ring with err %d", ret);
+	DRM_ERROR("Failed to allocate ring: %d\n", ret);
 	return ret;
 }
 
@@ -660,7 +659,7 @@ static int xdrv_evtchnl_publish(struct xenbus_transaction xbt,
 	return 0;
 
 fail:
-	DRM_ERROR("Error %s with err %d\n", message, ret);
+	DRM_ERROR("Error %s: %d\n", message, ret);
 	return ret;
 }
 

@@ -86,7 +86,7 @@ fail_destroy:
 	drm_gem_dumb_destroy(file_priv, dev, args->handle);
 fail:
 	kfree(dumb_info);
-	DRM_ERROR("Failed to create dumb buffer, ret %d\n", ret);
+	DRM_ERROR("Failed to create dumb buffer: %d\n", ret);
 	return ret;
 }
 
@@ -95,12 +95,11 @@ static void xendrm_free_object(struct drm_gem_object *gem_obj)
 	struct xendrm_device *xendrm_dev = gem_obj->dev->dev_private;
 	struct xendrm_devmb_info *dumb_info, *q;
 
-	DRM_ERROR("+++++++++++++++++ Looking for gem_obj %p\n", gem_obj);
+	DRM_DEBUG("Looking for gem_obj %p\n", gem_obj);
 	list_for_each_entry_safe(dumb_info, q, &xendrm_dev->dumb_buf_list, list) {
 		if (dumb_info->gem_obj == gem_obj) {
 			list_del(&dumb_info->list);
-			DRM_ERROR("+++++++++++++++++ Freeing handle %d\n",
-				dumb_info->handle);
+			DRM_DEBUG("Freeing handle %d\n", dumb_info->handle);
 			xendrm_dev->front_ops->dbuf_destroy(
 				xendrm_dev->xdrv_info, dumb_info->handle);
 			kfree(dumb_info);
