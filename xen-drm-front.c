@@ -103,7 +103,7 @@ struct xdrv_info {
 	struct mutex mutex;
 	bool ddrv_registered;
 	/* virtual DRM platform device */
-	struct platform_device *ddrv_pdev;
+	struct platform_device *drm_pdev;
 
 	int num_evt_pairs;
 	struct xdrv_evtchnl_pair_info *evt_pairs;
@@ -410,11 +410,11 @@ static void ddrv_cleanup(struct xdrv_info *drv_info)
 {
 	if (!drv_info->ddrv_registered)
 		return;
-	if (drv_info->ddrv_pdev)
-		platform_device_unregister(drv_info->ddrv_pdev);
+	if (drv_info->drm_pdev)
+		platform_device_unregister(drv_info->drm_pdev);
 	platform_driver_unregister(&ddrv_info);
 	drv_info->ddrv_registered = false;
-	drv_info->ddrv_pdev = NULL;
+	drv_info->drm_pdev = NULL;
 }
 
 static int ddrv_init(struct xdrv_info *drv_info)
@@ -430,9 +430,9 @@ static int ddrv_init(struct xdrv_info *drv_info)
 	/* pass card configuration via platform data */
 	ddrv_platform_info.data = platdata;
 	ddrv_platform_info.size_data = sizeof(struct xendrm_plat_data);
-	drv_info->ddrv_pdev = platform_device_register_full(&ddrv_platform_info);
-	if (IS_ERR(drv_info->ddrv_pdev)) {
-		drv_info->ddrv_pdev = NULL;
+	drv_info->drm_pdev = platform_device_register_full(&ddrv_platform_info);
+	if (IS_ERR(drv_info->drm_pdev)) {
+		drv_info->drm_pdev = NULL;
 		goto fail;
 	}
 	return 0;
@@ -525,7 +525,7 @@ static irqreturn_t xdrv_evtchnl_interrupt_evt(int irq, void *dev_id)
 		case XENDISPL_EVT_PG_FLIP:
 			if (likely(xendispl_front_funcs.on_page_flip)) {
 				xendispl_front_funcs.on_page_flip(
-					drv_info->ddrv_pdev, channel->index,
+					drv_info->drm_pdev, channel->index,
 					event->op.pg_flip.fb_cookie);
 			}
 			break;
@@ -1159,8 +1159,8 @@ static void xdrv_be_on_disconnected(struct xdrv_info *drv_info)
 {
 	bool removed = true;
 
-	if (drv_info->ddrv_pdev) {
-		if (xendrm_is_used(drv_info->ddrv_pdev)) {
+	if (drv_info->drm_pdev) {
+		if (xendrm_is_used(drv_info->drm_pdev)) {
 			DRM_WARN("DRM driver still in use, deferring removal\n");
 			removed = false;
 		} else {
