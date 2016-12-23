@@ -50,7 +50,6 @@
 enum xdrv_evtchnl_state {
 	EVTCHNL_STATE_DISCONNECTED,
 	EVTCHNL_STATE_CONNECTED,
-	EVTCHNL_STATE_SUSPENDED,
 };
 
 enum xdrv_evtchnl_type {
@@ -1132,11 +1131,6 @@ static int xdrv_remove(struct xenbus_device *dev)
 	return 0;
 }
 
-static int xdrv_resume(struct xenbus_device *dev)
-{
-	return 0;
-}
-
 static int xdrv_be_on_initwait(struct xdrv_info *drv_info)
 {
 	struct xendrm_plat_data *cfg_plat_data;
@@ -1271,7 +1265,6 @@ static struct xenbus_driver xen_driver = {
 	.ids = xdrv_ids,
 	.probe = xdrv_probe,
 	.remove = xdrv_remove,
-	.resume = xdrv_resume,
 	.otherend_changed = xdrv_be_on_changed,
 };
 
