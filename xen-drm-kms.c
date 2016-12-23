@@ -28,7 +28,8 @@ static void xendrm_fb_destroy(struct drm_framebuffer *fb)
 {
 	struct xendrm_device *xendrm_dev = fb->dev->dev_private;
 
-	xendrm_dev->front_ops->fb_detach(xendrm_dev->xdrv_info, (uint64_t)fb);
+	xendrm_dev->front_ops->fb_detach(xendrm_dev->xdrv_info,
+		xendrm_fb_to_cookie(fb));
 	xendrm_gem_fb_destroy(fb);
 }
 
@@ -49,7 +50,7 @@ xendrm_fb_create(struct drm_device *dev, struct drm_file *file_priv,
 		/* FIXME: we take the first handle */
 		if (xendrm_dev->front_ops->fb_attach(
 				xendrm_dev->xdrv_info, mode_cmd->handles[0],
-				(uint64_t)fb, fb->width, fb->height,
+				xendrm_fb_to_cookie(fb), fb->width, fb->height,
 				fb->pixel_format) < 0) {
 			DRM_ERROR("Back failed to attach FB %p\n", fb);
 			xendrm_gem_fb_destroy(fb);

@@ -26,6 +26,7 @@
 
 struct xendispl_front_ops;
 struct platform_device;
+struct drm_framebuffer;
 
 struct xendrm_device {
 	struct xdrv_info *xdrv_info;
@@ -58,6 +59,11 @@ struct xendrm_plat_data {
 	/* connector configurations */
 	struct xendrm_cfg_connector connectors[XENDRM_MAX_CRTCS];
 };
+
+static inline uint64_t xendrm_fb_to_cookie(struct drm_framebuffer *fb)
+{
+	return (uint64_t)fb;
+}
 
 int xendrm_probe(struct platform_device *pdev,
 	struct xendispl_front_ops *xendrm_front_funcs);

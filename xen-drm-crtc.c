@@ -45,11 +45,6 @@ to_xendrm_crtc(struct drm_crtc *crtc)
 	return container_of(crtc, struct xendrm_crtc, crtc);
 }
 
-static inline uint64_t xendrm_fb_to_cookie(struct drm_framebuffer *fb)
-{
-	return (uint64_t)fb;
-}
-
 static const struct drm_encoder_funcs xendrm_encoder_funcs = {
 	.destroy = drm_encoder_cleanup,
 };
@@ -376,7 +371,7 @@ static int xendrm_crtc_set_config(struct drm_mode_set *set)
 	if (set->mode) {
 		ret = xendrm_dev->front_ops->mode_set(xen_crtc, set->x, set->y,
 			set->fb->width, set->fb->height,
-			set->fb->bits_per_pixel, (uint64_t)set->fb);
+			set->fb->bits_per_pixel, xendrm_fb_to_cookie(set->fb));
 		if (ret < 0) {
 			DRM_ERROR("Failed to set mode to back, ret %d\n", ret);
 			return ret;
