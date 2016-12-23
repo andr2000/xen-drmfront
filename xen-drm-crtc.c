@@ -73,9 +73,6 @@ int xendrm_encoder_create(struct xendrm_device *xendrm_dev,
 static enum drm_connector_status
 xendrm_connector_detect(struct drm_connector *connector, bool force)
 {
-	/* TODO: check if on back disconnect connector_status_disconnected
-	 * will help cleaning up
-	 */
 	return connector_status_connected;
 }
 
