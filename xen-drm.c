@@ -127,15 +127,15 @@ static void xendrm_handle_vblank(unsigned long data)
 
 	for (i = 0; i < ARRAY_SIZE(xendrm_du->crtcs); i++) {
 		if (atomic_read(&xendrm_du->vblank_enabled[i])) {
-			struct xendrm_crtc *du_crtc = &xendrm_du->crtcs[i];
+			struct xendrm_crtc *xen_crtc = &xendrm_du->crtcs[i];
 
-			drm_crtc_handle_vblank(&du_crtc->crtc);
+			drm_crtc_handle_vblank(&xen_crtc->crtc);
 			/* handle page flip time outs */
 			if (likely(atomic_read(&xendrm_du->pflip_to_cnt_armed[i])))
 				if (unlikely(atomic_dec_and_test(
 						&xendrm_du->pflip_to_cnt[i]))) {
 					atomic_set(&xendrm_du->pflip_to_cnt_armed[i], 0);
-					xendrm_crtc_on_page_flip_to(du_crtc);
+					xendrm_crtc_on_page_flip_to(xen_crtc);
 				}
 		}
 	}

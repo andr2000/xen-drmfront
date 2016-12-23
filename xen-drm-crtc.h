@@ -53,14 +53,14 @@ struct xendrm_crtc {
 };
 
 int xendrm_crtc_create(struct xendrm_device *xendrm_du,
-	struct xendrm_crtc *du_crtc, unsigned int index);
+	struct xendrm_crtc *xen_crtc, unsigned int index);
 int xendrm_encoder_create(struct xendrm_device *xendrm_du,
-	struct xendrm_crtc *du_crtc);
+	struct xendrm_crtc *xen_crtc);
 int xendrm_connector_create(struct xendrm_device *xendrm_du,
-	struct xendrm_crtc *du_crtc, struct xendrm_cfg_connector *cfg);
+	struct xendrm_crtc *xen_crtc, struct xendrm_cfg_connector *cfg);
 
-void xendrm_crtc_on_page_flip_done(struct xendrm_crtc *du_crtc,
+void xendrm_crtc_on_page_flip_done(struct xendrm_crtc *xen_crtc,
 	uint64_t fb_cookie);
-void xendrm_crtc_on_page_flip_to(struct xendrm_crtc *du_crtc);
+void xendrm_crtc_on_page_flip_to(struct xendrm_crtc *xen_crtc);
 
 #endif /* __XEN_DRM_CRTC_H_ */
