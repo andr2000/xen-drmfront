@@ -1,10 +1,4 @@
-1. Think of unifying incoming event handling: extend ring.h
-so fdif.h, kbdif.h and drmif.h use something generic.
-2. hi-res timer for vblank?
 3. fbdev emulation
-4. Handle du_crtc->pg_flip_flush_queued/du_crtc->pg_flip_be_ntfy_fired
-simpler
-5. not all spin_lock must be irqsave/restore
 6. if vblanks are not needed system can live with
 .enable_vblank returning -ENOSYS. This way all vblank emulation
 via timers can be dropped (drivers/gpu/drm/vmwgfx/vmwgfx_kms.c)
