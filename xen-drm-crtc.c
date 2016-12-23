@@ -50,7 +50,7 @@ static inline uint64_t xendrm_fb_to_cookie(struct drm_framebuffer *fb)
 	return (uint64_t)fb;
 }
 
-static const struct drm_encoder_funcs xendrm_drm_encoder_funcs = {
+static const struct drm_encoder_funcs xendrm_encoder_funcs = {
 	.destroy = drm_encoder_cleanup,
 };
 
@@ -64,14 +64,14 @@ int xendrm_encoder_create(struct xendrm_device *xendrm_du,
 	encoder->possible_crtcs = 1 << du_crtc->index;
 	encoder->possible_clones = 0;
 	ret = drm_encoder_init(xendrm_du->ddev, encoder,
-		&xendrm_drm_encoder_funcs, DRM_MODE_ENCODER_VIRTUAL, NULL);
+		&xendrm_encoder_funcs, DRM_MODE_ENCODER_VIRTUAL, NULL);
 	if (ret < 0)
 		return ret;
 	return 0;
 }
 
 static enum drm_connector_status
-xendrm_drm_connector_detect(struct drm_connector *connector, bool force)
+xendrm_connector_detect(struct drm_connector *connector, bool force)
 {
 	/* TODO: check if on back disconnect connector_status_disconnected
 	 * will help cleaning up
@@ -103,7 +103,7 @@ static void xendrm_display_mode_from_videomode(const struct videomode *vm,
 }
 #endif
 
-static int xendrm_drm_connector_get_modes(struct drm_connector *connector)
+static int xendrm_connector_get_modes(struct drm_connector *connector)
 {
 	struct xendrm_connector *du_connector;
 	struct drm_display_mode *mode;
@@ -128,7 +128,7 @@ static int xendrm_drm_connector_get_modes(struct drm_connector *connector)
 	return XENDRM_NUM_VIDEO_MODES;
 }
 
-static int xendrm_drm_connector_mode_valid(struct drm_connector *connector,
+static int xendrm_connector_mode_valid(struct drm_connector *connector,
 	struct drm_display_mode *mode)
 {
 	struct xendrm_connector *du_connector =
@@ -141,15 +141,15 @@ static int xendrm_drm_connector_mode_valid(struct drm_connector *connector,
 }
 
 static const struct drm_connector_helper_funcs xendrm_connector_helper_funcs = {
-	.get_modes = xendrm_drm_connector_get_modes,
-	.mode_valid = xendrm_drm_connector_mode_valid,
+	.get_modes = xendrm_connector_get_modes,
+	.mode_valid = xendrm_connector_mode_valid,
 };
 
-static const struct drm_connector_funcs xendrm_drm_connector_funcs = {
+static const struct drm_connector_funcs xendrm_connector_funcs = {
 	.atomic_duplicate_state = drm_atomic_helper_connector_duplicate_state,
 	.atomic_destroy_state = drm_atomic_helper_connector_destroy_state,
 	.destroy = drm_connector_cleanup,
-	.detect = xendrm_drm_connector_detect,
+	.detect = xendrm_connector_detect,
 	.dpms = drm_atomic_helper_connector_dpms,
 	.fill_modes = drm_helper_probe_single_connector_modes,
 	.reset = drm_atomic_helper_connector_reset,
@@ -166,7 +166,7 @@ int xendrm_connector_create(struct xendrm_device *xendrm_du,
 	du_crtc->connector.width = cfg->width;
 	du_crtc->connector.height = cfg->height;
 	ret = drm_connector_init(xendrm_du->ddev, connector,
-		&xendrm_drm_connector_funcs, DRM_MODE_CONNECTOR_VIRTUAL);
+		&xendrm_connector_funcs, DRM_MODE_CONNECTOR_VIRTUAL);
 	if (ret < 0)
 		return ret;
 	drm_connector_helper_add(connector, &xendrm_connector_helper_funcs);
@@ -184,7 +184,7 @@ fail:
 	return ret;
 }
 
-static const uint32_t xendrm_drm_plane_formats[] = {
+static const uint32_t xendrm_plane_formats[] = {
 	DRM_FORMAT_RGB565,
 	DRM_FORMAT_RGB888,
 	DRM_FORMAT_XRGB8888,
@@ -205,8 +205,8 @@ static int xendrm_plane_atomic_check(struct drm_plane *plane,
 	if (!state->fb || !state->crtc)
 		return 0;
 
-	for (i = 0; i < ARRAY_SIZE(xendrm_drm_plane_formats); i++)
-		if (fb->pixel_format == xendrm_drm_plane_formats[i])
+	for (i = 0; i < ARRAY_SIZE(xendrm_plane_formats); i++)
+		if (fb->pixel_format == xendrm_plane_formats[i])
 			return 0;
 	return -EINVAL;
 }
@@ -238,8 +238,8 @@ static struct drm_plane *xendrm_crtc_create_primary(
 
 	ret = drm_universal_plane_init(xendrm_du->ddev, primary, 0,
 		&xendrm_crtc_drm_plane_funcs,
-		xendrm_drm_plane_formats,
-		ARRAY_SIZE(xendrm_drm_plane_formats),
+		xendrm_plane_formats,
+		ARRAY_SIZE(xendrm_plane_formats),
 		DRM_PLANE_TYPE_PRIMARY, NULL);
 	if (ret < 0) {
 		return NULL;
@@ -443,13 +443,13 @@ static void xendrm_crtc_atomic_flush(struct drm_crtc *crtc,
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 }
 
-static const struct drm_crtc_helper_funcs xendrm_drm_crtc_helper_funcs = {
+static const struct drm_crtc_helper_funcs xendrm_crtc_helper_funcs = {
 	.atomic_flush = xendrm_crtc_atomic_flush,
 	.enable = drm_crtc_vblank_on,
 	.disable = xendrm_crtc_disable,
 };
 
-static const struct drm_crtc_funcs xendrm_drm_crtc_funcs = {
+static const struct drm_crtc_funcs xendrm_crtc_funcs = {
 	.atomic_duplicate_state = drm_atomic_helper_crtc_duplicate_state,
 	.atomic_destroy_state = drm_atomic_helper_crtc_destroy_state,
 	.destroy = drm_crtc_cleanup,
@@ -477,11 +477,11 @@ int xendrm_crtc_create(struct xendrm_device *xendrm_du,
 
 	/* only primary plane, no cursor */
 	ret = drm_crtc_init_with_planes(xendrm_du->ddev, &du_crtc->crtc,
-		primary, NULL, &xendrm_drm_crtc_funcs, NULL);
+		primary, NULL, &xendrm_crtc_funcs, NULL);
 	if (ret) {
 		primary->funcs->destroy(primary);
 		return ret;
 	}
-	drm_crtc_helper_add(&du_crtc->crtc, &xendrm_drm_crtc_helper_funcs);
+	drm_crtc_helper_add(&du_crtc->crtc, &xendrm_crtc_helper_funcs);
 	return 0;
 }
