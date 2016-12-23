@@ -811,7 +811,7 @@ static int xdrv_cfg_connector(struct xdrv_info *drv_info,
 		connector_path, connector->width, connector->height);
 	ret = 0;
 fail:
-	return -ret;
+	return ret;
 }
 
 static int xdrv_cfg_card(struct xdrv_info *drv_info,
