@@ -105,7 +105,7 @@ static void xendrm_display_mode_from_videomode(const struct videomode *vm,
 
 static int xendrm_connector_get_modes(struct drm_connector *connector)
 {
-	struct xendrm_connector *du_connector;
+	struct xendrm_connector *xen_connector;
 	struct drm_display_mode *mode;
 	struct videomode videomode;
 	int width, height;
@@ -114,9 +114,9 @@ static int xendrm_connector_get_modes(struct drm_connector *connector)
 	if (!mode)
 		return 0;
 	memset(&videomode, 0, sizeof(videomode));
-	du_connector = to_xendrm_connector(connector);
-	videomode.hactive = du_connector->width;
-	videomode.vactive = du_connector->height;
+	xen_connector = to_xendrm_connector(connector);
+	videomode.hactive = xen_connector->width;
+	videomode.vactive = xen_connector->height;
 	width = videomode.hactive + videomode.hfront_porch +
 		videomode.hback_porch + videomode.hsync_len;
 	height = videomode.vactive + videomode.vfront_porch +
@@ -131,11 +131,11 @@ static int xendrm_connector_get_modes(struct drm_connector *connector)
 static int xendrm_connector_mode_valid(struct drm_connector *connector,
 	struct drm_display_mode *mode)
 {
-	struct xendrm_connector *du_connector =
+	struct xendrm_connector *xen_connector =
 		to_xendrm_connector(connector);
-	if (mode->hdisplay != du_connector->width)
+	if (mode->hdisplay != xen_connector->width)
 		return MODE_ERROR;
-	if (mode->vdisplay != du_connector->height)
+	if (mode->vdisplay != xen_connector->height)
 		return MODE_ERROR;
 	return MODE_OK;
 }
