@@ -867,9 +867,9 @@ static struct xdrv_shared_buffer_info *xdrv_sh_buf_get_by_dumb_cookie(
 	return NULL;
 }
 
+#ifdef CONFIG_X86
 static void xdrv_sh_buf_flush_fb(struct xdrv_info *drv_info, uint64_t fb_cookie)
 {
-#ifdef CONFIG_X86
 	struct xdrv_shared_buffer_info *buf, *q;
 
 	list_for_each_entry_safe(buf, q, &drv_info->dumb_buf_list, list) {
@@ -882,8 +882,10 @@ static void xdrv_sh_buf_flush_fb(struct xdrv_info *drv_info, uint64_t fb_cookie)
 			break;
 		}
 	}
-#endif
 }
+#else
+#define xdrv_sh_buf_flush_fb {}
+#endif
 
 static void xdrv_sh_buf_free(struct xdrv_shared_buffer_info *buf)
 {
