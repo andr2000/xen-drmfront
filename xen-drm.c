@@ -237,7 +237,7 @@ int xendrm_probe(struct platform_device *pdev,
 	if (!ddev)
 		return -ENOMEM;
 
-	xendrm_dev->ddev = ddev;
+	xendrm_dev->drm = ddev;
 	/*
 	 * FIXME: assume 1 CRTC and 1 Encoder per each connector
 	 */
@@ -294,7 +294,7 @@ fail_vblank:
 int xendrm_remove(struct platform_device *pdev)
 {
 	struct xendrm_device *xendrm_dev = platform_get_drvdata(pdev);
-	struct drm_device *drm_dev = xendrm_dev->ddev;
+	struct drm_device *drm_dev = xendrm_dev->drm;
 
 	xendrm_timer_cleanup(&xendrm_dev->vblank_timer);
 	drm_dev_unregister(drm_dev);
@@ -311,7 +311,7 @@ bool xendrm_is_used(struct platform_device *pdev)
 
 	if (!xendrm_dev)
 		return false;
-	drm_dev = xendrm_dev->ddev;
+	drm_dev = xendrm_dev->drm;
 	if (!drm_dev)
 		return false;
 

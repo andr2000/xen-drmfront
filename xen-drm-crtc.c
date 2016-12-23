@@ -63,7 +63,7 @@ int xendrm_encoder_create(struct xendrm_device *xendrm_dev,
 	/* only this CRTC w/o any clones */
 	encoder->possible_crtcs = 1 << xen_crtc->index;
 	encoder->possible_clones = 0;
-	ret = drm_encoder_init(xendrm_dev->ddev, encoder,
+	ret = drm_encoder_init(xendrm_dev->drm, encoder,
 		&xendrm_encoder_funcs, DRM_MODE_ENCODER_VIRTUAL, NULL);
 	if (ret < 0)
 		return ret;
@@ -160,12 +160,12 @@ int xendrm_connector_create(struct xendrm_device *xendrm_dev,
 {
 	struct drm_encoder *encoder = &xen_crtc->encoder;
 	struct drm_connector *connector = &xen_crtc->connector.base;
-	struct drm_mode_config *mode_config = &xendrm_dev->ddev->mode_config;
+	struct drm_mode_config *mode_config = &xendrm_dev->drm->mode_config;
 	int ret;
 
 	xen_crtc->connector.width = cfg->width;
 	xen_crtc->connector.height = cfg->height;
-	ret = drm_connector_init(xendrm_dev->ddev, connector,
+	ret = drm_connector_init(xendrm_dev->drm, connector,
 		&xendrm_connector_funcs, DRM_MODE_CONNECTOR_VIRTUAL);
 	if (ret < 0)
 		return ret;
@@ -236,7 +236,7 @@ static struct drm_plane *xendrm_crtc_create_primary(
 	struct drm_plane *primary = &xen_crtc->primary;
 	int ret;
 
-	ret = drm_universal_plane_init(xendrm_dev->ddev, primary, 0,
+	ret = drm_universal_plane_init(xendrm_dev->drm, primary, 0,
 		&xendrm_crtc_drm_plane_funcs,
 		xendrm_plane_formats,
 		ARRAY_SIZE(xendrm_plane_formats),
@@ -251,7 +251,7 @@ static struct drm_plane *xendrm_crtc_create_primary(
 static int xendrm_crtc_props_init(struct xendrm_device *xendrm_dev,
 	struct xendrm_crtc *xen_crtc)
 {
-	xen_crtc->props.alpha = drm_property_create_range(xendrm_dev->ddev,
+	xen_crtc->props.alpha = drm_property_create_range(xendrm_dev->drm,
 		0, "alpha", 0, 255);
 	if (!xen_crtc->props.alpha)
 		return -ENOMEM;
@@ -476,7 +476,7 @@ int xendrm_crtc_create(struct xendrm_device *xendrm_dev,
 		return -ENOMEM;
 
 	/* only primary plane, no cursor */
-	ret = drm_crtc_init_with_planes(xendrm_dev->ddev, &xen_crtc->crtc,
+	ret = drm_crtc_init_with_planes(xendrm_dev->drm, &xen_crtc->crtc,
 		primary, NULL, &xendrm_crtc_funcs, NULL);
 	if (ret) {
 		primary->funcs->destroy(primary);

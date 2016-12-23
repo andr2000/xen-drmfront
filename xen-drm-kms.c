@@ -67,7 +67,7 @@ static const struct drm_mode_config_funcs xendrm_mode_config_funcs = {
 
 int xendrm_modeset_init(struct xendrm_device *xendrm_dev)
 {
-	struct drm_device *drm_dev = xendrm_dev->ddev;
+	struct drm_device *drm_dev = xendrm_dev->drm;
 	int i, ret;
 
 	drm_mode_config_init(drm_dev);

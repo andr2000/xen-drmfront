@@ -30,7 +30,7 @@ struct platform_device;
 struct xendrm_device {
 	struct xdrv_info *xdrv_info;
 	struct xendispl_front_ops *front_ops;
-	struct drm_device *ddev;
+	struct drm_device *drm;
 	int num_crtcs;
 	struct xendrm_plat_data *platdata;
 	struct xendrm_crtc crtcs[XENDRM_MAX_CRTCS];
