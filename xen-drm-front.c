@@ -201,7 +201,7 @@ int xendispl_front_mode_set(struct xendrm_crtc *xen_crtc, uint32_t x,
 	struct xendispl_req *req;
 	unsigned long flags;
 
-	drv_info = xen_crtc->xendrm_du->xdrv_info;
+	drv_info = xen_crtc->xendrm_dev->xdrv_info;
 	evtchnl = &drv_info->evt_pairs[xen_crtc->index].ctrl;
 	if (unlikely(!evtchnl))
 		return -EIO;

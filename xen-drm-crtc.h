@@ -36,7 +36,7 @@ struct xendrm_connector {
 
 struct xendrm_crtc {
 	int index;
-	struct xendrm_device *xendrm_du;
+	struct xendrm_device *xendrm_dev;
 	struct drm_plane primary;
 	struct drm_crtc crtc;
 	struct drm_encoder encoder;
@@ -52,11 +52,11 @@ struct xendrm_crtc {
 	uint64_t fb_cookie;
 };
 
-int xendrm_crtc_create(struct xendrm_device *xendrm_du,
+int xendrm_crtc_create(struct xendrm_device *xendrm_dev,
 	struct xendrm_crtc *xen_crtc, unsigned int index);
-int xendrm_encoder_create(struct xendrm_device *xendrm_du,
+int xendrm_encoder_create(struct xendrm_device *xendrm_dev,
 	struct xendrm_crtc *xen_crtc);
-int xendrm_connector_create(struct xendrm_device *xendrm_du,
+int xendrm_connector_create(struct xendrm_device *xendrm_dev,
 	struct xendrm_crtc *xen_crtc, struct xendrm_cfg_connector *cfg);
 
 void xendrm_crtc_on_page_flip_done(struct xendrm_crtc *xen_crtc,

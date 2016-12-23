@@ -54,7 +54,7 @@ static const struct drm_encoder_funcs xendrm_encoder_funcs = {
 	.destroy = drm_encoder_cleanup,
 };
 
-int xendrm_encoder_create(struct xendrm_device *xendrm_du,
+int xendrm_encoder_create(struct xendrm_device *xendrm_dev,
 	struct xendrm_crtc *xen_crtc)
 {
 	struct drm_encoder *encoder = &xen_crtc->encoder;
@@ -63,7 +63,7 @@ int xendrm_encoder_create(struct xendrm_device *xendrm_du,
 	/* only this CRTC w/o any clones */
 	encoder->possible_crtcs = 1 << xen_crtc->index;
 	encoder->possible_clones = 0;
-	ret = drm_encoder_init(xendrm_du->ddev, encoder,
+	ret = drm_encoder_init(xendrm_dev->ddev, encoder,
 		&xendrm_encoder_funcs, DRM_MODE_ENCODER_VIRTUAL, NULL);
 	if (ret < 0)
 		return ret;
@@ -155,17 +155,17 @@ static const struct drm_connector_funcs xendrm_connector_funcs = {
 	.reset = drm_atomic_helper_connector_reset,
 };
 
-int xendrm_connector_create(struct xendrm_device *xendrm_du,
+int xendrm_connector_create(struct xendrm_device *xendrm_dev,
 	struct xendrm_crtc *xen_crtc, struct xendrm_cfg_connector *cfg)
 {
 	struct drm_encoder *encoder = &xen_crtc->encoder;
 	struct drm_connector *connector = &xen_crtc->connector.base;
-	struct drm_mode_config *mode_config = &xendrm_du->ddev->mode_config;
+	struct drm_mode_config *mode_config = &xendrm_dev->ddev->mode_config;
 	int ret;
 
 	xen_crtc->connector.width = cfg->width;
 	xen_crtc->connector.height = cfg->height;
-	ret = drm_connector_init(xendrm_du->ddev, connector,
+	ret = drm_connector_init(xendrm_dev->ddev, connector,
 		&xendrm_connector_funcs, DRM_MODE_CONNECTOR_VIRTUAL);
 	if (ret < 0)
 		return ret;
@@ -231,12 +231,12 @@ static const struct drm_plane_funcs xendrm_crtc_drm_plane_funcs = {
 };
 
 static struct drm_plane *xendrm_crtc_create_primary(
-	struct xendrm_device *xendrm_du, struct xendrm_crtc *xen_crtc)
+	struct xendrm_device *xendrm_dev, struct xendrm_crtc *xen_crtc)
 {
 	struct drm_plane *primary = &xen_crtc->primary;
 	int ret;
 
-	ret = drm_universal_plane_init(xendrm_du->ddev, primary, 0,
+	ret = drm_universal_plane_init(xendrm_dev->ddev, primary, 0,
 		&xendrm_crtc_drm_plane_funcs,
 		xendrm_plane_formats,
 		ARRAY_SIZE(xendrm_plane_formats),
@@ -248,10 +248,10 @@ static struct drm_plane *xendrm_crtc_create_primary(
 	return primary;
 }
 
-static int xendrm_crtc_props_init(struct xendrm_device *xendrm_du,
+static int xendrm_crtc_props_init(struct xendrm_device *xendrm_dev,
 	struct xendrm_crtc *xen_crtc)
 {
-	xen_crtc->props.alpha = drm_property_create_range(xendrm_du->ddev,
+	xen_crtc->props.alpha = drm_property_create_range(xendrm_dev->ddev,
 		0, "alpha", 0, 255);
 	if (!xen_crtc->props.alpha)
 		return -ENOMEM;
@@ -277,7 +277,7 @@ static int xendrm_crtc_do_page_flip(struct drm_crtc *crtc,
 {
 	struct xendrm_crtc *xen_crtc = to_xendrm_crtc(crtc);
 	struct drm_device *dev = xen_crtc->crtc.dev;
-	struct xendrm_device *xendrm_du;
+	struct xendrm_device *xendrm_dev;
 	unsigned long flags;
 	int ret;
 
@@ -303,10 +303,10 @@ static int xendrm_crtc_do_page_flip(struct drm_crtc *crtc,
 	xen_crtc->fb_cookie = xendrm_fb_to_cookie(fb);
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 
-	xendrm_du = xen_crtc->xendrm_du;
+	xendrm_dev = xen_crtc->xendrm_dev;
 
-	ret = xendrm_du->front_ops->page_flip(
-		xendrm_du->xdrv_info, xen_crtc->index, xendrm_fb_to_cookie(fb));
+	ret = xendrm_dev->front_ops->page_flip(
+		xendrm_dev->xdrv_info, xen_crtc->index, xendrm_fb_to_cookie(fb));
 	if (unlikely(ret < 0))
 		goto fail;
 
@@ -320,7 +320,7 @@ static int xendrm_crtc_do_page_flip(struct drm_crtc *crtc,
 	}
 
 	/* restart page flip time-out counter */
-	xendrm_vtimer_restart_to(xendrm_du, xen_crtc->index);
+	xendrm_vtimer_restart_to(xendrm_dev, xen_crtc->index);
 	return 0;
 
 fail:
@@ -374,11 +374,11 @@ static int xendrm_crtc_set_config(struct drm_mode_set *set)
 {
 	struct drm_crtc *crtc = set->crtc;
 	struct xendrm_crtc *xen_crtc = to_xendrm_crtc(crtc);
-	struct xendrm_device *xendrm_du = xen_crtc->xendrm_du;
+	struct xendrm_device *xendrm_dev = xen_crtc->xendrm_dev;
 	int ret;
 
 	if (set->mode) {
-		ret = xendrm_du->front_ops->mode_set(xen_crtc, set->x, set->y,
+		ret = xendrm_dev->front_ops->mode_set(xen_crtc, set->x, set->y,
 			set->fb->width, set->fb->height,
 			set->fb->bits_per_pixel, (uint64_t)set->fb);
 		if (ret < 0) {
@@ -386,7 +386,7 @@ static int xendrm_crtc_set_config(struct drm_mode_set *set)
 			return ret;
 		}
 	} else {
-		ret = xendrm_du->front_ops->mode_set(xen_crtc,
+		ret = xendrm_dev->front_ops->mode_set(xen_crtc,
 			0, 0, 0, 0, 0, 0);
 		if (ret < 0)
 			DRM_ERROR("Failed to set mode to back, ret %d\n", ret);
@@ -399,7 +399,7 @@ static void xendrm_crtc_disable(struct drm_crtc *crtc)
 {
 	struct xendrm_crtc *xen_crtc = to_xendrm_crtc(crtc);
 
-	xendrm_vtimer_cancel_to(xen_crtc->xendrm_du, xen_crtc->index);
+	xendrm_vtimer_cancel_to(xen_crtc->xendrm_dev, xen_crtc->index);
 	if (wait_event_timeout(xen_crtc->flip_wait,
 			!xendrm_crtc_page_flip_pending(xen_crtc),
 			msecs_to_jiffies(XENDRM_CRTC_PFLIP_TO_MS)) == 0) {
@@ -458,25 +458,25 @@ static const struct drm_crtc_funcs xendrm_crtc_funcs = {
 	.set_config = xendrm_crtc_set_config,
 };
 
-int xendrm_crtc_create(struct xendrm_device *xendrm_du,
+int xendrm_crtc_create(struct xendrm_device *xendrm_dev,
 	struct xendrm_crtc *xen_crtc, unsigned int index)
 {
 	struct drm_plane *primary;
 	int ret;
 
 	memset(xen_crtc, 0, sizeof(*xen_crtc));
-	xen_crtc->xendrm_du = xendrm_du;
+	xen_crtc->xendrm_dev = xendrm_dev;
 	xen_crtc->index = index;
 	init_waitqueue_head(&xen_crtc->flip_wait);
-	ret = xendrm_crtc_props_init(xendrm_du, xen_crtc);
+	ret = xendrm_crtc_props_init(xendrm_dev, xen_crtc);
 	if (ret < 0)
 		return ret;
-	primary = xendrm_crtc_create_primary(xendrm_du, xen_crtc);
+	primary = xendrm_crtc_create_primary(xendrm_dev, xen_crtc);
 	if (!primary)
 		return -ENOMEM;
 
 	/* only primary plane, no cursor */
-	ret = drm_crtc_init_with_planes(xendrm_du->ddev, &xen_crtc->crtc,
+	ret = drm_crtc_init_with_planes(xendrm_dev->ddev, &xen_crtc->crtc,
 		primary, NULL, &xendrm_crtc_funcs, NULL);
 	if (ret) {
 		primary->funcs->destroy(primary);

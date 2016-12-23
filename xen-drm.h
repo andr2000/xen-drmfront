@@ -64,8 +64,8 @@ int xendrm_probe(struct platform_device *pdev,
 int xendrm_remove(struct platform_device *pdev);
 bool xendrm_is_used(struct platform_device *pdev);
 
-void xendrm_vtimer_restart_to(struct xendrm_device *xendrm_du, int index);
-void xendrm_vtimer_cancel_to(struct xendrm_device *xendrm_du, int index);
+void xendrm_vtimer_restart_to(struct xendrm_device *xendrm_dev, int index);
+void xendrm_vtimer_cancel_to(struct xendrm_device *xendrm_dev, int index);
 
 #endif /* __XEN_DRM_H*/
 
