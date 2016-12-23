@@ -991,8 +991,10 @@ int xdrv_sh_buf_grant_refs(struct xenbus_device *xb_dev,
 	struct scatterlist *sg;
 
 	ret = gnttab_alloc_grant_references(num_grefs, &priv_gref_head);
-	if (ret < 0)
+	if (ret < 0) {
+		DRM_ERROR("Cannot allocate grant references\n");
 		return ret;
+	}
 	buf->num_grefs = num_grefs;
 	otherend_id = xb_dev->otherend_id;
 	j = 0;
