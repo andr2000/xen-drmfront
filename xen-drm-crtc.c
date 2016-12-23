@@ -305,7 +305,7 @@ static int xendrm_du_crtc_do_page_flip(struct drm_crtc *crtc,
 
 	xendrm_du = du_crtc->xendrm_du;
 
-	ret = xendrm_du->front_funcs->page_flip(
+	ret = xendrm_du->front_ops->page_flip(
 		xendrm_du->xdrv_info, du_crtc->index, xendrm_fb_to_cookie(fb));
 	if (unlikely(ret < 0))
 		goto fail;
@@ -378,7 +378,7 @@ static int xendrm_crtc_set_config(struct drm_mode_set *set)
 	int ret;
 
 	if (set->mode) {
-		ret = xendrm_du->front_funcs->mode_set(du_crtc, set->x, set->y,
+		ret = xendrm_du->front_ops->mode_set(du_crtc, set->x, set->y,
 			set->fb->width, set->fb->height,
 			set->fb->bits_per_pixel, (uint64_t)set->fb);
 		if (ret < 0) {
@@ -386,7 +386,7 @@ static int xendrm_crtc_set_config(struct drm_mode_set *set)
 			return ret;
 		}
 	} else {
-		ret = xendrm_du->front_funcs->mode_set(du_crtc,
+		ret = xendrm_du->front_ops->mode_set(du_crtc,
 			0, 0, 0, 0, 0, 0);
 		if (ret < 0)
 			DRM_ERROR("Failed to set mode to back, ret %d\n", ret);

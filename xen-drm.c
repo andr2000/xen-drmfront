@@ -71,7 +71,7 @@ static int xendrm_dumb_create(struct drm_file *file_priv, struct drm_device *dev
 		goto fail_destroy;
 	}
 	drm_gem_object_unreference_unlocked(gem_obj);
-	ret = xendrm_du->front_funcs->dbuf_create(
+	ret = xendrm_du->front_ops->dbuf_create(
 			xendrm_du->xdrv_info, args->handle, args->width,
 			args->height, args->bpp, args->size,
 			xendrm_gem_get_sg_table(gem_obj));
@@ -101,7 +101,7 @@ static void xendrm_free_object(struct drm_gem_object *gem_obj)
 			list_del(&dumb_info->list);
 			DRM_ERROR("+++++++++++++++++ Freeing handle %d\n",
 				dumb_info->handle);
-			xendrm_du->front_funcs->dbuf_destroy(
+			xendrm_du->front_ops->dbuf_destroy(
 				xendrm_du->xdrv_info, dumb_info->handle);
 			kfree(dumb_info);
 			break;
@@ -145,7 +145,7 @@ static void xendrm_lastclose(struct drm_device *dev)
 {
 	struct xendrm_du_device *xendrm_du = dev->dev_private;
 
-	xendrm_du->front_funcs->drm_last_close(xendrm_du->xdrv_info);
+	xendrm_du->front_ops->drm_last_close(xendrm_du->xdrv_info);
 }
 
 void xendrm_vtimer_restart_to(struct xendrm_du_device *xendrm_du, int index)
@@ -214,7 +214,7 @@ static struct xendrm_du_timer_callbacks vblank_timer_ops = {
 };
 
 int xendrm_probe(struct platform_device *pdev,
-	struct xendispl_front_funcs *xendrm_front_funcs)
+	struct xendispl_front_ops *xendrm_front_funcs)
 {
 	struct xendrm_plat_data *platdata;
 	struct xendrm_du_device *xendrm_du;
@@ -229,8 +229,8 @@ int xendrm_probe(struct platform_device *pdev,
 		return -ENOMEM;
 
 	INIT_LIST_HEAD(&xendrm_du->dumb_buf_list);
-	xendrm_du->front_funcs = xendrm_front_funcs;
-	xendrm_du->front_funcs->on_page_flip = xendrm_on_page_flip;
+	xendrm_du->front_ops = xendrm_front_funcs;
+	xendrm_du->front_ops->on_page_flip = xendrm_on_page_flip;
 	xendrm_du->xdrv_info = platdata->xdrv_info;
 
 	ddev = drm_dev_alloc(&xendrm_driver, &pdev->dev);

@@ -324,7 +324,7 @@ int xendispl_front_page_flip(struct xdrv_info *drv_info, int conn_idx,
 	return ddrv_be_stream_do_io(evtchnl, req, flags);
 }
 
-static struct xendispl_front_funcs xendispl_front_funcs = {
+static struct xendispl_front_ops xendispl_front_funcs = {
 	.mode_set = xendispl_front_mode_set,
 	.dbuf_create = xendispl_front_dbuf_create,
 	.dbuf_destroy = xendispl_front_dbuf_destroy,
