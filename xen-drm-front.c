@@ -124,6 +124,8 @@ static struct DRMIF_TO_KERN_ERROR drmif_kern_error_codes[] = {
 	{ .drmif = XENDISPL_RSP_OKAY,     .kern = 0 },
 	{ .drmif = XENDISPL_RSP_ERROR,    .kern = EIO },
 	{ .drmif = XENDISPL_RSP_NOTSUPP,  .kern = ENOSYS },
+	{ .drmif = XENDISPL_RSP_NOMEM,    .kern = ENOMEM },
+	{ .drmif = XENDISPL_RSP_INVAL,    .kern = EINVAL },
 };
 
 static int drmif_to_kern_error(int drmif_err)
