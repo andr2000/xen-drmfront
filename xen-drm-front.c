@@ -191,7 +191,7 @@ static int ddrv_be_stream_do_io(struct xdrv_evtchnl_info *evtchnl,
 	return drmif_to_kern_error(evtchnl->u.ctrl.resp_status);
 }
 
-int xendispl_front_mode_set(struct xendrm_du_crtc *du_crtc, uint32_t x,
+int xendispl_front_mode_set(struct xendrm_crtc *du_crtc, uint32_t x,
 	uint32_t y, uint32_t width, uint32_t height, uint32_t bpp,
 	uint64_t fb_cookie)
 
@@ -832,10 +832,10 @@ static int xdrv_cfg_card(struct xdrv_info *drv_info,
 			path, XENDISPL_PATH_CONNECTOR);
 		return -ENODEV;
 	}
-	if (num_conn > XENDRM_DU_MAX_CRTCS) {
+	if (num_conn > XENDRM_MAX_CRTCS) {
 		DRM_WARN("Only %d connectors supported, skipping the rest\n",
-			XENDRM_DU_MAX_CRTCS);
-		num_conn = XENDRM_DU_MAX_CRTCS;
+			XENDRM_MAX_CRTCS);
+		num_conn = XENDRM_MAX_CRTCS;
 	}
 	for (i = 0; i < num_conn; i++) {
 		ret = xdrv_cfg_connector(drv_info,

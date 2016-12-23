@@ -18,7 +18,7 @@
 
 #include "xen-drm-timer.h"
 
-void xendrm_du_timer_start(struct xendrm_du_timer *timer)
+void xendrm_timer_start(struct xendrm_timer *timer)
 {
 	unsigned long flags;
 
@@ -30,7 +30,7 @@ void xendrm_du_timer_start(struct xendrm_du_timer *timer)
 	spin_unlock_irqrestore(&timer->lock, flags);
 }
 
-void xendrm_du_timer_stop(struct xendrm_du_timer *timer, bool force)
+void xendrm_timer_stop(struct xendrm_timer *timer, bool force)
 {
 	unsigned long flags;
 
@@ -42,9 +42,9 @@ void xendrm_du_timer_stop(struct xendrm_du_timer *timer, bool force)
 	spin_unlock_irqrestore(&timer->lock, flags);
 }
 
-static void xendrm_du_timer_callback(unsigned long data)
+static void xendrm_timer_callback(unsigned long data)
 {
-	struct xendrm_du_timer *timer = (struct xendrm_du_timer *)data;
+	struct xendrm_timer *timer = (struct xendrm_timer *)data;
 
 	if (likely(atomic_read(&timer->running))) {
 		unsigned long flags;
@@ -56,28 +56,28 @@ static void xendrm_du_timer_callback(unsigned long data)
 	}
 }
 
-int xendrm_du_timer_init(struct xendrm_du_timer *timer,
-	unsigned long clb_private, struct xendrm_du_timer_callbacks *clb)
+int xendrm_timer_init(struct xendrm_timer *timer,
+	unsigned long clb_private, struct xendrm_timer_callbacks *clb)
 {
 	if (!clb)
 		return -EINVAL;
 	timer->clb = clb;
 	timer->clb_private = clb_private;
 
-	setup_timer(&timer->timer, xendrm_du_timer_callback,
+	setup_timer(&timer->timer, xendrm_timer_callback,
 		(unsigned long)timer);
 	spin_lock_init(&timer->lock);
 	return 0;
 }
 
-void xendrm_du_timer_setup(struct xendrm_du_timer *timer,
+void xendrm_timer_setup(struct xendrm_timer *timer,
 	int freq_hz, int to_ms)
 {
 	timer->period = msecs_to_jiffies(1000 / freq_hz);
 	timer->to_period = to_ms * freq_hz / 1000;
 }
 
-void xendrm_du_timer_cleanup(struct xendrm_du_timer *timer)
+void xendrm_timer_cleanup(struct xendrm_timer *timer)
 {
-	xendrm_du_timer_stop(timer, true);
+	xendrm_timer_stop(timer, true);
 }

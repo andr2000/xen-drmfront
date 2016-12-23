@@ -20,26 +20,26 @@
 #include <linux/time.h>
 #include <linux/interrupt.h>
 
-struct xendrm_du_timer_callbacks {
+struct xendrm_timer_callbacks {
 	void (*on_period)(unsigned long data);
 };
 
-struct xendrm_du_timer {
+struct xendrm_timer {
 	struct timer_list timer;
 	unsigned long period;
 	spinlock_t lock;
 	int to_period;
 	unsigned long clb_private;
-	struct xendrm_du_timer_callbacks *clb;
+	struct xendrm_timer_callbacks *clb;
 	atomic_t running;
 };
 
-int xendrm_du_timer_init(struct xendrm_du_timer *timer,
-	unsigned long clb_private, struct xendrm_du_timer_callbacks *clb);
-void xendrm_du_timer_setup(struct xendrm_du_timer *timer,
+int xendrm_timer_init(struct xendrm_timer *timer,
+	unsigned long clb_private, struct xendrm_timer_callbacks *clb);
+void xendrm_timer_setup(struct xendrm_timer *timer,
 	int freq_hz, int to_ms);
-void xendrm_du_timer_cleanup(struct xendrm_du_timer *timer);
-void xendrm_du_timer_start(struct xendrm_du_timer *timer);
-void xendrm_du_timer_stop(struct xendrm_du_timer *timer, bool force);
+void xendrm_timer_cleanup(struct xendrm_timer *timer);
+void xendrm_timer_start(struct xendrm_timer *timer);
+void xendrm_timer_stop(struct xendrm_timer *timer, bool force);
 
 #endif /* __XEN_DRM_TIMER_H_ */

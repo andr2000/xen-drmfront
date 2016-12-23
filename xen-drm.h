@@ -22,27 +22,27 @@
 #include "xen-drm-crtc.h"
 #include "xen-drm-timer.h"
 
-#define XENDRM_DU_MAX_CRTCS	4
+#define XENDRM_MAX_CRTCS	4
 
 struct xendispl_front_ops;
 struct platform_device;
 
-struct xendrm_du_device {
+struct xendrm_device {
 	struct xdrv_info *xdrv_info;
 	struct xendispl_front_ops *front_ops;
 	struct drm_device *ddev;
 	int num_crtcs;
 	struct xendrm_plat_data *platdata;
-	struct xendrm_du_crtc crtcs[XENDRM_DU_MAX_CRTCS];
+	struct xendrm_crtc crtcs[XENDRM_MAX_CRTCS];
 
 	/* dumb buffers - used to match gem to handle */
 	struct list_head dumb_buf_list;
 
 	/* vblank and page flip handling */
-	struct xendrm_du_timer vblank_timer;
-	atomic_t pflip_to_cnt[XENDRM_DU_MAX_CRTCS];
-	atomic_t pflip_to_cnt_armed[XENDRM_DU_MAX_CRTCS];
-	atomic_t vblank_enabled[XENDRM_DU_MAX_CRTCS];
+	struct xendrm_timer vblank_timer;
+	atomic_t pflip_to_cnt[XENDRM_MAX_CRTCS];
+	atomic_t pflip_to_cnt_armed[XENDRM_MAX_CRTCS];
+	atomic_t vblank_enabled[XENDRM_MAX_CRTCS];
 };
 
 struct xendrm_cfg_connector {
@@ -56,7 +56,7 @@ struct xendrm_plat_data {
 	/* number of connectors in this configuration */
 	int num_connectors;
 	/* connector configurations */
-	struct xendrm_cfg_connector connectors[XENDRM_DU_MAX_CRTCS];
+	struct xendrm_cfg_connector connectors[XENDRM_MAX_CRTCS];
 };
 
 int xendrm_probe(struct platform_device *pdev,
@@ -64,8 +64,8 @@ int xendrm_probe(struct platform_device *pdev,
 int xendrm_remove(struct platform_device *pdev);
 bool xendrm_is_used(struct platform_device *pdev);
 
-void xendrm_vtimer_restart_to(struct xendrm_du_device *xendrm_du, int index);
-void xendrm_vtimer_cancel_to(struct xendrm_du_device *xendrm_du, int index);
+void xendrm_vtimer_restart_to(struct xendrm_device *xendrm_du, int index);
+void xendrm_vtimer_cancel_to(struct xendrm_device *xendrm_du, int index);
 
 #endif /* __XEN_DRM_H*/
 

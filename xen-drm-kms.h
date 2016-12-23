@@ -17,8 +17,8 @@
 #ifndef __XEN_DRM_KMS_H_
 #define __XEN_DRM_KMS_H_
 
-struct xendrm_du_device;
+struct xendrm_device;
 
-int xendrm_du_modeset_init(struct xendrm_du_device *xendrm_du);
+int xendrm_modeset_init(struct xendrm_device *xendrm_du);
 
 #endif /* __XEN_DRM_KMS_H_ */

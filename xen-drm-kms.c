@@ -24,23 +24,23 @@
 #include "xen-drm-gem.h"
 #include "xen-drm-kms.h"
 
-static void xendrm_du_fb_destroy(struct drm_framebuffer *fb)
+static void xendrm_fb_destroy(struct drm_framebuffer *fb)
 {
-	struct xendrm_du_device *xendrm_du = fb->dev->dev_private;
+	struct xendrm_device *xendrm_du = fb->dev->dev_private;
 
 	xendrm_du->front_ops->fb_detach(xendrm_du->xdrv_info, (uint64_t)fb);
 	xendrm_gem_fb_destroy(fb);
 }
 
 static struct drm_framebuffer_funcs xendr_du_fb_funcs = {
-	.destroy = xendrm_du_fb_destroy,
+	.destroy = xendrm_fb_destroy,
 };
 
 static struct drm_framebuffer *
-xendrm_du_fb_create(struct drm_device *dev, struct drm_file *file_priv,
+xendrm_fb_create(struct drm_device *dev, struct drm_file *file_priv,
 	const struct drm_mode_fb_cmd2 *mode_cmd)
 {
-	struct xendrm_du_device *xendrm_du = dev->dev_private;
+	struct xendrm_device *xendrm_du = dev->dev_private;
 	static struct drm_framebuffer *fb;
 
 	fb = xendrm_gem_fb_create_with_funcs(dev, file_priv,
@@ -59,13 +59,13 @@ xendrm_du_fb_create(struct drm_device *dev, struct drm_file *file_priv,
 	return fb;
 }
 
-static const struct drm_mode_config_funcs xendrm_du_mode_config_funcs = {
-	.fb_create = xendrm_du_fb_create,
+static const struct drm_mode_config_funcs xendrm_mode_config_funcs = {
+	.fb_create = xendrm_fb_create,
 	.atomic_check = drm_atomic_helper_check,
 	.atomic_commit = drm_atomic_helper_commit,
 };
 
-int xendrm_du_modeset_init(struct xendrm_du_device *xendrm_du)
+int xendrm_modeset_init(struct xendrm_device *xendrm_du)
 {
 	struct drm_device *drm_dev = xendrm_du->ddev;
 	int i, ret;
@@ -76,19 +76,19 @@ int xendrm_du_modeset_init(struct xendrm_du_device *xendrm_du)
 	drm_dev->mode_config.min_height = 0;
 	drm_dev->mode_config.max_width = 4095;
 	drm_dev->mode_config.max_height = 2047;
-	drm_dev->mode_config.funcs = &xendrm_du_mode_config_funcs;
+	drm_dev->mode_config.funcs = &xendrm_mode_config_funcs;
 
 	for (i = 0; i < xendrm_du->num_crtcs; i++) {
-		struct xendrm_du_crtc *crtc;
+		struct xendrm_crtc *crtc;
 
 		crtc = &xendrm_du->crtcs[i];
-		ret = xendrm_du_crtc_create(xendrm_du, crtc, i);
+		ret = xendrm_crtc_create(xendrm_du, crtc, i);
 		if (ret < 0)
 			goto fail;
-		ret = xendrm_du_encoder_create(xendrm_du, crtc);
+		ret = xendrm_encoder_create(xendrm_du, crtc);
 		if (ret)
 			goto fail;
-		ret = xendrm_du_connector_create(xendrm_du, crtc,
+		ret = xendrm_connector_create(xendrm_du, crtc,
 			&xendrm_du->platdata->connectors[i]);
 		if (ret)
 			goto fail;
