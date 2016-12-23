@@ -193,7 +193,6 @@ static const uint32_t xendrm_plane_formats[] = {
 	DRM_FORMAT_ARGB4444,
 	DRM_FORMAT_XRGB1555,
 	DRM_FORMAT_ARGB1555,
-	DRM_FORMAT_YUV422,
 };
 
 static int xendrm_plane_atomic_check(struct drm_plane *plane,
