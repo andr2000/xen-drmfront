@@ -47,7 +47,7 @@
  * Direction of improvements
  ******************************************************************************
  * o allow display/connector cloning
- * o allow allocating objects other than frambeffers(?)
+ * o allow allocating objects other than frambeffers
  * o add planes/overlays support
  * o support scaling
  * o support rotation
@@ -104,9 +104,21 @@
  *
  *      Zero based contiguous index of the connector within the card.
  *
+ *------------------------------ Driver settings -------------------------------
+ * features
+ *      Values:         <list of strings>
+ *
+ *      XENDISPL_LIST_SEPARATOR separated list of features that frontend
+ *      driver is requested to support. These are not mandatory and may not
+ *      be implemented by the frontend:
+ *
+ *      be_alloc
+ *             Backend can be a buffer provider/allocator during
+ *             XENDISPL_OP_DBUF_CREATE operation (see below for negotiation).
+ *
  *----------------------------- Connector settings -----------------------------
  * resolution
- *      Values:         <[width]x[height]>
+ *      Values:         <width>x<height>
  *
  *      Width and height for the connector in pixels separated by
  *      XENDISPL_RESOLUTION_SEPARATOR. For example,
@@ -226,17 +238,25 @@
  */
 #define XENDISPL_DRIVER_NAME              "vdispl"
 
+#define XENDISPL_LIST_SEPARATOR           ";"
 #define XENDISPL_RESOLUTION_SEPARATOR     "x"
 /* Field names */
+#define XENDISPL_FIELD_FEATURES           "features"
 #define XENDISPL_FIELD_CTRL_RING_REF      "ctrl-ring-ref"
 #define XENDISPL_FIELD_CTRL_CHANNEL       "ctrl-channel"
 #define XENDISPL_FIELD_EVT_RING_REF       "event-ring-ref"
 #define XENDISPL_FIELD_EVT_CHANNEL        "event-channel"
 #define XENDISPL_FIELD_RESOLUTION         "resolution"
 
+#define XENDISPL_FEATURE_BE_ALLOC          "be_alloc"
+
 /*
  * STATUS RETURN CODES.
  */
+/* Operation parameters are invalid */
+#define XENDISPL_RSP_INVAL                (-4)
+/* Operation cannot be completed because of memory constraints */
+#define XENDISPL_RSP_NOMEM                (-3)
 /* Operation is not supported */
 #define XENDISPL_RSP_NOTSUPP              (-2)
 /* Operation failed for some unspecified reason (e. g. -EIO) */
@@ -265,8 +285,8 @@
  * Display buffers's cookie of value 0 treated as invalid.
  * Framebuffer's cookie of value 0 treated as invalid.
  *
- * All requests, which are not connector specific, must be sent over control
- * ring of the connector with index 0.
+ * All requests/responses, which are not connector specific, must be sent over
+ * control ring of the connector with index 0.
  *
  *****************************************************************************
  *                            Frontend to backend requests
@@ -303,6 +323,8 @@
  * +-----------------+-----------------+-----------------+-----------------+
  * |                               buffer_sz                               |
  * +-----------------+-----------------+-----------------+-----------------+
+ * |                                 flags                                 |
+ * +-----------------+-----------------+-----------------+-----------------+
  * |                         gref_directory_start                          |
  * +-----------------+-----------------+-----------------+-----------------+
  * |                               reserved                                |
@@ -320,11 +342,24 @@
  * height - uint32_t, height in pixels
  * bpp - uint32_t, bits per pixel
  * buffer_sz - uint32_t, buffer size to be allocated in octets
+ * flags - uint32_t, flags of the operation
+ *   o XENDISPL_DBUF_FLG_REQ_ALLOC - if set, then backend is requested
+ *     to allocate the buffer with the parameters provided in this request.
+ *     Page directory is handled as follows:
+ *       Frontend on request:
+ *         o allocates pages for the directory
+ *         o grants permissions for the pages of the directory
+ *         o sets gref_dir_next_page fields
+ *       Backend on response:
+ *         o grants permissions for the pages of the buffer allocated
+ *         o fills in page directory with grant references
  * gref_directory_start - grant_ref_t, a reference to the first shared page
  *   describing shared buffer references. At least one page exists. If shared
  *   buffer size exceeds what can be addressed by this single page, then
  *   reference to the next page must be supplied (see gref_dir_next_page below)
  */
+
+#define XENDISPL_DBUF_FLG_REQ_ALLOC       0x0001
 
 struct xendispl_dbuf_create_req {
     uint64_t dbuf_cookie;
@@ -332,6 +367,7 @@ struct xendispl_dbuf_create_req {
     uint32_t height;
     uint32_t bpp;
     uint32_t buffer_sz;
+    uint32_t flags;
     grant_ref_t gref_directory_start;
 };
 
@@ -560,6 +596,25 @@ struct xendispl_page_flip_req {
     uint64_t fb_cookie;
 };
 
+/*
+ * All response packets have the same length (64 octets)
+ *
+ * Response for all requests:
+ *          0                 1                  2                3        octet
+ * +-----------------+-----------------+-----------------+-----------------+
+ * |                 id                |      status     |    reserved     |
+ * +-----------------+-----------------+-----------------+-----------------+
+ * |                               reserved                                |
+ * +-----------------+-----------------+-----------------+-----------------+
+ * |/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/|
+ * +-----------------+-----------------+-----------------+-----------------+
+ * |                               reserved                                |
+ * +-----------------+-----------------+-----------------+-----------------+
+ *
+ * id - uint16_t, private guest value, echoed from request
+ * status - int8_t, response status
+ */
+
 /*****************************************************************************
  *                            Backend to frontend events
  *****************************************************************************
@@ -663,9 +718,9 @@ struct xendispl_event_page {
     uint8_t reserved[60];
 };
 
-#define XENDISPL_PAGE_SIZE 4096
+#define XENDISPL_EVENT_PAGE_SIZE 4096
 #define XENDISPL_IN_RING_OFFS (sizeof(struct xendispl_event_page))
-#define XENDISPL_IN_RING_SIZE (XENDISPL_PAGE_SIZE - XENDISPL_IN_RING_OFFS)
+#define XENDISPL_IN_RING_SIZE (XENDISPL_EVENT_PAGE_SIZE - XENDISPL_IN_RING_OFFS)
 #define XENDISPL_IN_RING_LEN (XENDISPL_IN_RING_SIZE / sizeof(struct xendispl_evt))
 #define XENDISPL_IN_RING(page) \
 	((struct xendispl_evt *)((char *)(page) + XENDISPL_IN_RING_OFFS))
