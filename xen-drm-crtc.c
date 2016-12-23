@@ -65,8 +65,8 @@ int xendrm_encoder_create(struct xendrm_device *xendrm_dev,
 	return 0;
 }
 
-static enum drm_connector_status
-xendrm_connector_detect(struct drm_connector *connector, bool force)
+static enum drm_connector_status xendrm_connector_detect(
+	struct drm_connector *connector, bool force)
 {
 	return connector_status_connected;
 }
@@ -83,14 +83,11 @@ static void xendrm_display_mode_from_videomode(const struct videomode *vm,
 	dmode->hsync_start = dmode->hdisplay + vm->hfront_porch;
 	dmode->hsync_end = dmode->hsync_start + vm->hsync_len;
 	dmode->htotal = dmode->hsync_end + vm->hback_porch;
-
 	dmode->vdisplay = vm->vactive;
 	dmode->vsync_start = dmode->vdisplay + vm->vfront_porch;
 	dmode->vsync_end = dmode->vsync_start + vm->vsync_len;
 	dmode->vtotal = dmode->vsync_end + vm->vback_porch;
-
 	dmode->clock = vm->pixelclock / 1000;
-
 	drm_mode_set_name(dmode);
 }
 #endif
@@ -125,6 +122,7 @@ static int xendrm_connector_mode_valid(struct drm_connector *connector,
 {
 	struct xendrm_connector *xen_connector =
 		to_xendrm_connector(connector);
+
 	if (mode->hdisplay != xen_connector->width)
 		return MODE_ERROR;
 	if (mode->vdisplay != xen_connector->height)
@@ -205,6 +203,7 @@ static int xendrm_plane_atomic_check(struct drm_plane *plane,
 static void xendrm_plane_atomic_update(struct drm_plane *plane,
 	struct drm_plane_state *old_state)
 {
+	/* nothing to do */
 }
 
 static const struct drm_plane_helper_funcs xendrm_plane_helper_funcs = {
