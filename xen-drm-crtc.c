@@ -412,10 +412,6 @@ static void xendrm_crtc_atomic_flush(struct drm_crtc *crtc,
 	if (event) {
 		if (event->event.base.type == DRM_EVENT_FLIP_COMPLETE) {
 			WARN_ON(drm_crtc_vblank_get(crtc) != 0);
-			/* TODO: if the event set at .page_flip was initialized
-			 * properly at this moment we do not need the
-			 * assignment below
-			 */
 			xen_crtc->pg_flip_event = event;
 			WARN_ON(atomic_read(&xen_crtc->pg_flip_senders) == 0);
 			if (atomic_dec_and_test(&xen_crtc->pg_flip_senders)) {
