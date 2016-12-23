@@ -1,8 +1,6 @@
 /*
  *  Xen para-virtual DRM device
  *
- *  Based on
- *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
  *   the Free Software Foundation; either version 2 of the License, or
@@ -785,7 +783,7 @@ static void xdrv_evtchnl_set_state(struct xdrv_info *drv_info,
 
 }
 /* get number of nodes under the path to get number of
- * cards configured or number of connectors within the card
+ * connectors
  */
 static char **xdrv_cfg_get_num_nodes(const char *path, const char *node,
 		int *num_entries)
@@ -956,6 +954,9 @@ static void xdrv_sh_buf_free_all(struct xdrv_info *drv_info)
 	}
 }
 
+/* number of grefs a page can hold with respect to the
+ * xendispl_page_directory header
+ */
 #define XENDRM_NUM_GREFS_PER_PAGE ((XEN_PAGE_SIZE - \
 	offsetof(struct xendispl_page_directory, gref)) / \
 	sizeof(grant_ref_t))
@@ -1065,9 +1066,6 @@ xdrv_sh_buf_alloc(struct xdrv_info *drv_info, uint64_t dumb_cookie,
 	buf->sgt = sgt;
 	buf->dumb_cookie = dumb_cookie;
 	num_pages_vbuffer = DIV_ROUND_UP(buffer_size, XEN_PAGE_SIZE);
-	/* number of grefs a page can hold with respect to the
-	 * xendispl_page_directory header
-	 */
 	/* number of pages the directory itself consumes */
 	num_pages_dir = DIV_ROUND_UP(num_pages_vbuffer,
 		XENDRM_NUM_GREFS_PER_PAGE);
@@ -1244,7 +1242,7 @@ static void xdrv_be_on_changed(struct xenbus_device *xb_dev,
 			break;
 		if (xb_dev->state == XenbusStateInitialising)
 			break;
-		/* Missed the backend's CLOSING state -- fallthrough */
+		/* Missed the backend's CLOSING state -- fall-through */
 	case XenbusStateClosing:
 		/* FIXME: is this check needed? */
 		if (xb_dev->state == XenbusStateClosing)
